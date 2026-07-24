@@ -4,6 +4,7 @@ import {
   MessageSquare,
   FileText,
   ScrollText,
+  Rocket,
   X,
 } from "lucide-react";
 import { KimiIcon } from "@/components/KimiIcon";
@@ -12,6 +13,7 @@ import { cn } from "@/lib/utils";
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "仪表盘" },
   { to: "/chat", icon: MessageSquare, label: "金库生成" },
+  { to: "/deploy", icon: Rocket, label: "自定义部署合约" },
   { to: "/docs", icon: FileText, label: "规范文档" },
   { to: "/logs", icon: ScrollText, label: "服务日志" },
 ];

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Send,
   Plus,
@@ -10,6 +11,7 @@ import {
   Layers,
   Sparkles,
   AlertCircle,
+  Rocket,
 } from "lucide-react";
 import { useAppStore } from "@/store";
 import { sendChatMessage } from "@/lib/kimi";
@@ -36,6 +38,7 @@ const EXAMPLE_PROMPT = `例如：帮我写一个燃烧池税金库，金库合�
 
 export default function Chat() {
   const { addLog } = useAppStore();
+  const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState<"generate" | "params" | "example">("generate");
   const [prompt, setPrompt] = useState("");
@@ -118,6 +121,7 @@ export default function Chat() {
 
       const code = extractCode(content);
       setGeneratedCode(code);
+      localStorage.setItem("flap-generated-code", code);
       addLog({ type: "success", message: "合约代码生成成功" });
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
@@ -170,6 +174,7 @@ export default function Chat() {
           onClick={() => {
             setPrompt("");
             setGeneratedCode("");
+            localStorage.removeItem("flap-generated-code");
             setParams({
               projectName: "",
               contractName: "",
@@ -413,6 +418,14 @@ export default function Chat() {
               >
                 <Layers className="h-3.5 w-3.5" />
                 Select
+              </button>
+              <button
+                onClick={() => navigate("/deploy")}
+                disabled={!generatedCode}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-[#D0FF00]/30 bg-[#D0FF00]/10 px-3 py-1.5 text-xs font-medium text-[#D0FF00] transition-colors hover:bg-[#D0FF00]/20 disabled:cursor-not-allowed disabled:opacity-40 sm:flex-initial"
+              >
+                <Rocket className="h-3.5 w-3.5" />
+                部署
               </button>
             </div>
           </div>
