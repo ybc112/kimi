@@ -1,5 +1,5 @@
 import ReactMarkdown from "react-markdown";
-import { User, Bot } from "lucide-react";
+import { Bot } from "lucide-react";
 import { CodeBlock } from "./CodeBlock";
 
 interface MessageItemProps {
@@ -19,21 +19,14 @@ export function MessageItem({ role, content }: MessageItemProps) {
             : "max-w-[90%] rounded-2xl rounded-tl-sm border border-[#23262A] bg-[#15171A] px-5 py-3 text-sm text-[#E8E8E8]"
         }
       >
-        <div className="mb-2 flex items-center gap-2">
-          {isUser ? (
-            <>
-              <User className="h-4 w-4 text-[#D0FF00]" />
-              <span className="text-xs font-medium text-[#D0FF00]">用户</span>
-            </>
-          ) : (
-            <>
-              <Bot className="h-4 w-4 text-[#2EDEDB]" />
-              <span className="text-xs font-medium text-[#2EDEDB]">Kimi</span>
-            </>
-          )}
-        </div>
+        {!isUser && (
+          <div className="mb-2 flex items-center gap-2">
+            <Bot className="h-4 w-4 text-[#2EDEDB]" />
+            <span className="text-xs font-medium text-[#2EDEDB]">Kimi</span>
+          </div>
+        )}
 
-        <div className="prose prose-invert prose-sm max-w-none">
+        <div className="prose prose-invert prose-sm max-w-none break-words">
           <ReactMarkdown
             components={{
               code({ className, children, ...props }) {
@@ -43,7 +36,7 @@ export function MessageItem({ role, content }: MessageItemProps) {
                   return <CodeBlock code={code} language={match[1]} />;
                 }
                 return (
-                  <code className="rounded bg-[#23262A] px-1.5 py-0.5 text-[#D0FF00]" {...props}>
+                  <code className="break-all rounded bg-[#23262A] px-1.5 py-0.5 text-[#D0FF00]" {...props}>
                     {children}
                   </code>
                 );
