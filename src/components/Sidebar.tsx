@@ -11,7 +11,7 @@ import { KimiIcon } from "@/components/KimiIcon";
 import { cn } from "@/lib/utils";
 
 const navItems = [
-  { to: "/", icon: LayoutDashboard, label: "仪表盘" },
+  { to: "/", icon: LayoutDashboard, label: "Kimi" },
   { to: "/chat", icon: MessageSquare, label: "金库生成" },
   { to: "/deploy", icon: Rocket, label: "自定义部署合约" },
   { to: "/docs", icon: FileText, label: "规范文档" },
