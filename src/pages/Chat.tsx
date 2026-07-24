@@ -1,27 +1,60 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Plus, MessageSquare, Trash2, Bot } from "lucide-react";
+import {
+  Send,
+  Plus,
+  Copy,
+  Download,
+  Check,
+  FileCheck,
+  Shield,
+  Layers,
+  Sparkles,
+  AlertCircle,
+} from "lucide-react";
 import { useAppStore } from "@/store";
-import { MessageItem } from "@/components/MessageItem";
 import { sendChatMessage } from "@/lib/kimi";
 import { FLAP_SYSTEM_PROMPT } from "@/lib/flapContext";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { cn } from "@/lib/utils";
 
-export default function Chat() {
-  const {
-    sessions,
-    currentSessionId,
-    addSession,
-    setCurrentSession,
-    deleteSession,
-    addMessage,
-    addLog,
-  } = useAppStore();
+const vaultTypes = [
+  { value: "mint-treasury", label: "Mint Treasury", mode: "Mint" },
+  { value: "buyback", label: "Buyback Vault", mode: "Buyback" },
+  { value: "dividend", label: "Dividend Vault", mode: "Dividend" },
+  { value: "lp", label: "LP Vault", mode: "Liquidity" },
+  { value: "custom", label: "Custom", mode: "Custom" },
+];
 
-  const [input, setInput] = useState("");
+const TEMPLATE_CHECKS = [
+  { label: "VaultBaseV2 继承", status: "required", pass: true },
+  { label: "guardian 权限控制", status: "required", pass: true },
+  { label: "receive() gas 限制", status: "required", pass: true },
+];
+
+const EXAMPLE_PROMPT = `例如：帮我写一个燃烧池税金库，金库合约将 0.2 BNB 自动回购销毁。`;
+
+export default function Chat() {
+  const { addLog } = useAppStore();
+
+  const [activeTab, setActiveTab] = useState<"generate" | "params" | "example">("generate");
+  const [prompt, setPrompt] = useState("");
+  const [generatedCode, setGeneratedCode] = useState("");
   const [loading, setLoading] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const [copied, setCopied] = useState(false);
+
+  const [params, setParams] = useState({
+    projectName: "",
+    contractName: "",
+    vaultType: "mint-treasury",
+    treasuryReceiver: "",
+    mintPrice: "0.2",
+    mintAmount: "100000",
+    treasurySplit: "80",
+    secondWallet: "",
+  });
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const currentSession = sessions.find((s) => s.id === currentSessionId);
 
   const adjustTextareaHeight = useCallback(() => {
     const el = textareaRef.current;
@@ -32,77 +65,59 @@ export default function Chat() {
 
   useEffect(() => {
     adjustTextareaHeight();
-  }, [input, adjustTextareaHeight]);
+  }, [prompt, adjustTextareaHeight]);
 
-  useEffect(() => {
-    if (currentSession && currentSession.messages.length === 0) {
-      addMessage(currentSession.id, {
-        role: "assistant",
-        content:
-          "你好！我是 Kimi。请描述你想要的 Vault 机制，例如：\n\n- 我想做一个自动回购代币并销毁的 Vault\n- 我想把税收收入的 50% 分给持有者，50% 加 LP\n- 我想实现一个阶梯式解锁的 Treasury Vault\n\n我会根据 Flap Tax Vault V2 规范生成合规的 Solidity 代码。",
-        timestamp: Date.now(),
-      });
-    }
-  }, [currentSession?.id]);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [currentSession?.messages, loading]);
-
-  const createSession = () => {
-    const newSession = {
-      id: crypto.randomUUID(),
-      title: "新对话",
-      messages: [],
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-    addSession(newSession);
-    return newSession.id;
+  const updateParam = (key: keyof typeof params, value: string) => {
+    setParams((prev) => ({ ...prev, [key]: value }));
   };
 
-  const sendMessage = async (sessionId: string, userContent: string) => {
-    addMessage(sessionId, {
-      role: "user",
-      content: userContent,
-      timestamp: Date.now(),
-    });
+  const buildUserPrompt = () => {
+    const type = vaultTypes.find((v) => v.value === params.vaultType);
+    return [
+      prompt,
+      "",
+      "## 项目参数",
+      `项目名称：${params.projectName || "未填写"}`,
+      `合约名称：${params.contractName || "未填写"}`,
+      `金库类型：${type?.label || "Custom"}`,
+      `Treasury 接收地址：${params.treasuryReceiver || "部署时指定"}`,
+      `Mint 价格（BNB）：${params.mintPrice}`,
+      `每次 Mint 份额：${params.mintAmount}`,
+      `Treasury 分成比例：${params.treasurySplit}%`,
+      params.secondWallet ? `二级钱包地址：${params.secondWallet}` : "",
+      "",
+      "请生成完整的 Solidity 合约代码，并确保符合 Flap Tax Vault V2 规范。",
+    ]
+      .filter(Boolean)
+      .join("\n");
+  };
+
+  const extractCode = (text: string) => {
+    const match = /```(?:solidity)?\s*([\s\S]*?)```/.exec(text);
+    return match ? match[1].trim() : text.trim();
+  };
+
+  const handleGenerate = async () => {
+    if (!prompt.trim() || loading) return;
 
     setLoading(true);
     addLog({ type: "info", message: "正在请求 Kimi 生成合约" });
 
-    const session = useAppStore.getState().sessions.find((s) => s.id === sessionId);
-    if (!session) {
-      setLoading(false);
-      return;
-    }
-
     try {
-      const history = session.messages
-        .filter((m) => m.role !== "system")
-        .slice(-20)
-        .map((m) => ({
-          role: m.role,
-          content: m.content,
-        }));
-
+      const userPrompt = buildUserPrompt();
       const content = await sendChatMessage({
         model: "deepseek-chat",
         messages: [
           { role: "system", content: FLAP_SYSTEM_PROMPT },
-          ...history,
-          { role: "user", content: userContent },
+          { role: "user", content: userPrompt },
         ],
         stream: false,
         temperature: 0.3,
       });
 
-      addMessage(sessionId, {
-        role: "assistant",
-        content,
-        timestamp: Date.now(),
-      });
-      addLog({ type: "success", message: "Kimi 响应成功", detail: `会话：${session.title}` });
+      const code = extractCode(content);
+      setGeneratedCode(code);
+      addLog({ type: "success", message: "合约代码生成成功" });
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       addLog({ type: "error", message: "Kimi 请求失败", detail });
@@ -111,140 +126,378 @@ export default function Chat() {
     }
   };
 
-  const handleSend = async () => {
-    if (!input.trim() || loading) return;
-
-    const userContent = input.trim();
-    setInput("");
-
-    let sessionId = currentSessionId;
-    if (!sessionId) {
-      sessionId = createSession();
-    }
-
-    await sendMessage(sessionId, userContent);
+  const handleCopy = async () => {
+    if (!generatedCode) return;
+    await navigator.clipboard.writeText(generatedCode);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
+  const handleDownload = () => {
+    if (!generatedCode) return;
+    const blob = new Blob([generatedCode], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${params.contractName || "FlapVault"}.sol`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
+
+  const handleSelectAll = () => {
+    const el = document.getElementById("generated-code");
+    if (!el) return;
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  };
+
+  const selectedType = vaultTypes.find((v) => v.value === params.vaultType);
 
   return (
-    <div className="flex h-[calc(100vh-3rem)] gap-6">
-      <aside className="flex w-64 flex-col rounded-xl border border-[#23262A] bg-[#15171A]">
-        <div className="border-b border-[#23262A] p-4">
-          <button
-            onClick={createSession}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#D0FF00] py-2 text-sm font-semibold text-black transition-opacity hover:opacity-90"
-          >
-            <Plus className="h-4 w-4" />
-            新建会话
-          </button>
+    <div className="flex h-[calc(100vh-7rem)] flex-col gap-4 lg:h-[calc(100vh-3rem)]">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-xl font-bold text-white">金库生成</h2>
+          <p className="text-xs text-[#84888C]">基于 Kimi + Flap Tax Vault V2 规范生成合约代码</p>
         </div>
+        <button
+          onClick={() => {
+            setPrompt("");
+            setGeneratedCode("");
+            setParams({
+              projectName: "",
+              contractName: "",
+              vaultType: "mint-treasury",
+              treasuryReceiver: "",
+              mintPrice: "0.2",
+              mintAmount: "100000",
+              treasurySplit: "80",
+              secondWallet: "",
+            });
+          }}
+          className="flex items-center justify-center gap-2 rounded-lg border border-[#23262A] bg-[#15171A] px-4 py-2 text-sm text-[#9CA3AF] transition-colors hover:border-[#D0FF00]/30 hover:text-white sm:justify-start"
+        >
+          <Plus className="h-4 w-4" />
+          新建生成
+        </button>
+      </div>
 
-        <div className="flex-1 overflow-auto p-2">
-          {sessions.length === 0 ? (
-            <div className="px-2 py-8 text-center text-xs text-[#5F656D]">暂无会话</div>
-          ) : (
-            <ul className="space-y-1">
-              {sessions.map((session) => (
-                <li
-                  key={session.id}
-                  onClick={() => setCurrentSession(session.id)}
-                  className={cn(
-                    "group flex cursor-pointer items-center justify-between rounded-lg px-3 py-2.5 text-sm transition-colors",
-                    currentSessionId === session.id
-                      ? "bg-[#1A1D21] text-[#D0FF00]"
-                      : "text-[#9CA3AF] hover:bg-[#1A1D21] hover:text-white"
-                  )}
-                >
-                  <div className="flex items-center gap-2 overflow-hidden">
-                    <MessageSquare className="h-4 w-4 shrink-0" />
-                    <span className="truncate">{session.title}</span>
-                  </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      deleteSession(session.id);
-                    }}
-                    className="opacity-0 transition-opacity group-hover:opacity-100"
-                  >
-                    <Trash2 className="h-3.5 w-3.5 text-[#5F656D] hover:text-red-400" />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </aside>
-
-      <div className="flex flex-1 flex-col rounded-xl border border-[#23262A] bg-[#15171A]">
-        {!currentSession ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#D0FF00]/10">
-              <Bot className="h-8 w-8 text-[#D0FF00]" />
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-white">开始新的金库设计</h3>
-              <p className="mt-1 text-sm text-[#84888C]">在下方输入框描述需求，或点击左侧「新建会话」</p>
-            </div>
+      <div className="flex flex-1 flex-col gap-4 overflow-hidden lg:flex-row">
+        {/* Left: Parameters */}
+        <div className="flex w-full flex-col rounded-xl border border-[#23262A] bg-[#15171A] lg:w-[420px]">
+          <div className="flex items-center justify-between border-b border-[#23262A] px-5 py-4">
+            <h3 className="font-semibold text-white">生成参数</h3>
+            <span className="rounded-full bg-[#D0FF00]/10 px-2 py-0.5 text-xs text-[#D0FF00]">可配置 Remix</span>
           </div>
-        ) : (
-          <>
-            <div className="border-b border-[#23262A] px-5 py-3">
-              <h3 className="font-medium text-white">{currentSession.title}</h3>
-              <p className="text-xs text-[#84888C]">{currentSession.messages.length} 条消息 · Kimi</p>
-            </div>
 
-            <div className="flex-1 space-y-5 overflow-auto p-5">
-              {currentSession.messages.map((message, index) => (
-                <MessageItem key={index} role={message.role} content={message.content} />
-              ))}
-              {loading && (
-                <div className="flex justify-start">
-                  <div className="max-w-[90%] rounded-2xl rounded-tl-sm border border-[#23262A] bg-[#1A1D21] px-5 py-3">
-                    <div className="flex items-center gap-2 text-sm text-[#84888C]">
-                      <Bot className="h-4 w-4 text-[#2EDEDB]" />
-                      <span>Kimi 正在生成合约代码</span>
+          <div className="flex border-b border-[#23262A]">
+            {[
+              { key: "generate", label: "生成说明" },
+              { key: "params", label: "参数说明" },
+              { key: "example", label: "示例说明" },
+            ].map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key as typeof activeTab)}
+                className={cn(
+                  "flex-1 border-b-2 py-2.5 text-xs font-medium transition-colors",
+                  activeTab === tab.key
+                    ? "border-[#D0FF00] text-[#D0FF00]"
+                    : "border-transparent text-[#5F656D] hover:text-[#9CA3AF]"
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex-1 overflow-auto p-5">
+            {activeTab === "generate" && (
+              <div className="space-y-5">
+                <div>
+                  <label className="mb-2 block text-xs font-medium text-[#9CA3AF]">需求描述</label>
+                  <textarea
+                    ref={textareaRef}
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    placeholder={EXAMPLE_PROMPT}
+                    rows={4}
+                    className="w-full resize-none rounded-lg border border-[#303236] bg-[#0B0D0E] p-3 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
+                  />
+                  <p className="mt-1.5 text-xs text-[#5F656D]">
+                    输入需求后会自动识别：金库类型、接收地址、Mint 价格、每次份额、分成比例、提现/救援/Guardian，并立即生成合规代码。
+                  </p>
+                </div>
+
+                <div className="grid gap-4">
+                  <div>
+                    <label className="mb-1.5 block text-xs text-[#84888C]">项目名称</label>
+                    <input
+                      type="text"
+                      value={params.projectName}
+                      onChange={(e) => updateParam("projectName", e.target.value)}
+                      placeholder="Fcodex"
+                      className="w-full rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-xs text-[#84888C]">合约名称</label>
+                    <input
+                      type="text"
+                      value={params.contractName}
+                      onChange={(e) => updateParam("contractName", e.target.value)}
+                      placeholder="FcodexMintVault"
+                      className="w-full rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-xs text-[#84888C]">金库类型</label>
+                    <select
+                      value={params.vaultType}
+                      onChange={(e) => updateParam("vaultType", e.target.value)}
+                      className="w-full rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50"
+                    >
+                      {vaultTypes.map((t) => (
+                        <option key={t.value} value={t.value} className="bg-[#15171A]">
+                          {t.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-xs text-[#84888C]">接收次数钱包</label>
+                    <input
+                      type="text"
+                      value={params.treasuryReceiver}
+                      onChange={(e) => updateParam("treasuryReceiver", e.target.value)}
+                      placeholder="0x..."
+                      className="w-full rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1.5 block text-xs text-[#84888C]">Mint 价格 BNB</label>
+                      <input
+                        type="text"
+                        value={params.mintPrice}
+                        onChange={(e) => updateParam("mintPrice", e.target.value)}
+                        placeholder="0.2"
+                        className="w-full rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-xs text-[#84888C]">每次 Mint 份额</label>
+                      <input
+                        type="text"
+                        value={params.mintAmount}
+                        onChange={(e) => updateParam("mintAmount", e.target.value)}
+                        placeholder="100000"
+                        className="w-full rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1.5 block text-xs text-[#84888C]">Treasury split %</label>
+                      <input
+                        type="text"
+                        value={params.treasurySplit}
+                        onChange={(e) => updateParam("treasurySplit", e.target.value)}
+                        placeholder="80"
+                        className="w-full rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-xs text-[#84888C]">Second wallet</label>
+                      <input
+                        type="text"
+                        value={params.secondWallet}
+                        onChange={(e) => updateParam("secondWallet", e.target.value)}
+                        placeholder="0x..."
+                        className="w-full rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleGenerate}
+                  disabled={!prompt.trim() || loading}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#D0FF00] py-2.5 text-sm font-semibold text-black transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {loading ? (
+                    <>
                       <span className="inline-flex gap-1">
                         <span className="animate-bounce">.</span>
                         <span className="animate-bounce [animation-delay:0.2s]">.</span>
                         <span className="animate-bounce [animation-delay:0.4s]">.</span>
                       </span>
-                    </div>
-                  </div>
-                </div>
-              )}
-              <div ref={bottomRef} />
-            </div>
-
-            <div className="border-t border-[#23262A] p-4">
-              <div className="flex items-end gap-3 rounded-xl border border-[#303236] bg-[#0B0D0E] p-3">
-                <textarea
-                  ref={textareaRef}
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="描述你的 Vault 需求，按 Enter 发送，Shift+Enter 换行..."
-                  rows={1}
-                  disabled={loading}
-                  className="max-h-40 min-h-[44px] flex-1 resize-none bg-transparent px-2 py-2.5 text-sm text-white outline-none placeholder:text-[#5F656D]"
-                  style={{ height: "auto" }}
-                />
-                <button
-                  onClick={handleSend}
-                  disabled={!input.trim() || loading}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#D0FF00] text-black transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <Send className="h-4 w-4" />
+                      生成中
+                    </>
+                  ) : (
+                    <>
+                      <Send className="h-4 w-4" />
+                      生成代码
+                    </>
+                  )}
                 </button>
               </div>
+            )}
+
+            {activeTab === "params" && (
+              <div className="space-y-4 text-sm text-[#9CA3AF]">
+                <p>参数说明：</p>
+                <ul className="list-disc space-y-2 pl-4">
+                  <li>项目名称：用于注释和标识，不影响合约逻辑。</li>
+                  <li>合约名称：生成的 Solidity contract 名称。</li>
+                  <li>金库类型：决定 Vault 的核心机制（Mint、Buyback、Dividend、LP）。</li>
+                  <li>接收地址：税收或 Mint 资金的接收钱包。</li>
+                  <li>Mint 价格：每次 Mint 需要支付的 BNB 数量。</li>
+                  <li>每次 Mint 份额：用户每次 Mint 获得的代币数量。</li>
+                  <li>Treasury split：进入金库的分成比例。</li>
+                  <li>Second wallet：用于二次分配或备用接收地址。</li>
+                </ul>
+              </div>
+            )}
+
+            {activeTab === "example" && (
+              <div className="space-y-4 text-sm text-[#9CA3AF]">
+                <p>示例需求：</p>
+                <div className="rounded-lg border border-[#303236] bg-[#0B0D0E] p-3 text-[#D0FF00]">
+                  {EXAMPLE_PROMPT}
+                </div>
+                <p>填写参数后点击「生成代码」，Kimi 会根据 Flap V2 规范生成完整合约。</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right: Generated Code */}
+        <div className="flex flex-1 flex-col min-h-0 rounded-xl border border-[#23262A] bg-[#15171A]">
+          <div className="flex flex-col gap-3 border-b border-[#23262A] px-4 py-4 sm:flex-row sm:items-center sm:justify-between lg:px-5">
+            <h3 className="font-semibold text-white">生成代码</h3>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleCopy}
+                disabled={!generatedCode}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-1.5 text-xs text-[#9CA3AF] transition-colors hover:border-[#D0FF00]/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 sm:flex-initial"
+              >
+                {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                Copy
+              </button>
+              <button
+                onClick={handleDownload}
+                disabled={!generatedCode}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-1.5 text-xs text-[#9CA3AF] transition-colors hover:border-[#D0FF00]/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 sm:flex-initial"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Download
+              </button>
+              <button
+                onClick={handleSelectAll}
+                disabled={!generatedCode}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-1.5 text-xs text-[#9CA3AF] transition-colors hover:border-[#D0FF00]/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 sm:flex-initial"
+              >
+                <Layers className="h-3.5 w-3.5" />
+                Select
+              </button>
             </div>
-          </>
-        )}
+          </div>
+
+          <div className="flex flex-1 flex-col overflow-hidden lg:flex-row">
+            <div className="flex-1 min-h-0 overflow-auto p-0">
+              {!generatedCode ? (
+                <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-[#5F656D]">
+                  <Sparkles className="h-10 w-10 text-[#303236]" />
+                  <p className="text-sm">在上方填写参数并点击「生成代码」</p>
+                </div>
+              ) : (
+                <div id="generated-code" className="h-full min-w-[600px]">
+                  <SyntaxHighlighter
+                    language="solidity"
+                    style={vscDarkPlus}
+                    customStyle={{
+                      margin: 0,
+                      padding: "1.25rem",
+                      fontSize: "0.8125rem",
+                      lineHeight: 1.6,
+                      background: "transparent",
+                      minHeight: "100%",
+                    }}
+                  >
+                    {generatedCode}
+                  </SyntaxHighlighter>
+                </div>
+              )}
+            </div>
+
+            {/* Template Check Sidebar */}
+            <div className="w-full border-t border-[#23262A] bg-[#111215] p-4 lg:w-[260px] lg:border-l lg:border-t-0">
+              <div className="mb-4 flex items-center gap-2">
+                <FileCheck className="h-4 w-4 text-[#D0FF00]" />
+                <h4 className="text-sm font-semibold text-white">模板检查</h4>
+              </div>
+
+              <div className="mb-4 rounded-lg border border-[#23262A] bg-[#0B0D0E] p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-[#84888C]">Required hooks</span>
+                  <span className="text-sm font-bold text-[#D0FF00]">3/3</span>
+                </div>
+              </div>
+
+              <div className="mb-4 space-y-2">
+                {TEMPLATE_CHECKS.map((check, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center justify-between rounded-lg border border-[#23262A] bg-[#0B0D0E] px-3 py-2"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Check className="h-3.5 w-3.5 text-[#2EDEDB]" />
+                      <span className="text-xs text-[#9CA3AF]">{check.label}</span>
+                    </div>
+                    <span className="text-[10px] uppercase text-[#5F656D]">{check.status}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mb-4 rounded-lg border border-[#23262A] bg-[#0B0D0E] p-3">
+                <div className="mb-2 flex items-center gap-2">
+                  <Shield className="h-3.5 w-3.5 text-[#FF6B6B]" />
+                  <span className="text-xs font-medium text-white">Guards</span>
+                </div>
+                <div className="text-2xl font-bold text-white">3</div>
+              </div>
+
+              <div className="mb-4 rounded-lg border border-[#23262A] bg-[#0B0D0E] p-3">
+                <div className="mb-2 text-xs text-[#84888C]">Mode</div>
+                <div className="inline-flex items-center gap-2 rounded-full bg-[#D0FF00]/10 px-2.5 py-1 text-xs text-[#D0FF00]">
+                  {selectedType?.mode || "Custom"}
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-[#303236] bg-[#15171A] p-3">
+                <div className="mb-2 flex items-start gap-2">
+                  <AlertCircle className="mt-0.5 h-3.5 w-3.5 text-[#84888C]" />
+                  <span className="text-xs font-medium text-white">Flap 规范提示</span>
+                </div>
+                <p className="text-xs leading-relaxed text-[#5F656D]">
+                  模板检查基于 Flap Tax Vault V2 规范。生成代码后请人工复核 Guardian、TWAP、Buyback
+                  触发条件等关键逻辑，上线前务必审计。
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
