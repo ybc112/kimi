@@ -73,6 +73,7 @@ export default function Chat() {
 
   const buildUserPrompt = () => {
     const type = vaultTypes.find((v) => v.value === params.vaultType);
+    const isMint = params.vaultType === "mint-treasury";
     return [
       prompt,
       "",
@@ -81,8 +82,8 @@ export default function Chat() {
       `合约名称：${params.contractName || "未填写"}`,
       `金库类型：${type?.label || "Custom"}`,
       `Treasury 接收地址：${params.treasuryReceiver || "部署时指定"}`,
-      `Mint 价格（BNB）：${params.mintPrice}`,
-      `每次 Mint 份额：${params.mintAmount}`,
+      isMint ? `Mint 价格（BNB）：${params.mintPrice}` : "",
+      isMint ? `每次 Mint 份额：${params.mintAmount}` : "",
       `Treasury 分成比例：${params.treasurySplit}%`,
       params.secondWallet ? `二级钱包地址：${params.secondWallet}` : "",
       "",
@@ -283,28 +284,30 @@ export default function Chat() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div>
-                      <label className="mb-1.5 block text-xs text-[#84888C]">Mint 价格 BNB</label>
-                      <input
-                        type="text"
-                        value={params.mintPrice}
-                        onChange={(e) => updateParam("mintPrice", e.target.value)}
-                        placeholder="0.2"
-                        className="w-full rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
-                      />
+                  {params.vaultType === "mint-treasury" && (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1.5 block text-xs text-[#84888C]">Mint 价格 BNB</label>
+                        <input
+                          type="text"
+                          value={params.mintPrice}
+                          onChange={(e) => updateParam("mintPrice", e.target.value)}
+                          placeholder="0.2"
+                          className="w-full rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-xs text-[#84888C]">每次 Mint 份额</label>
+                        <input
+                          type="text"
+                          value={params.mintAmount}
+                          onChange={(e) => updateParam("mintAmount", e.target.value)}
+                          placeholder="100000"
+                          className="w-full rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label className="mb-1.5 block text-xs text-[#84888C]">每次 Mint 份额</label>
-                      <input
-                        type="text"
-                        value={params.mintAmount}
-                        onChange={(e) => updateParam("mintAmount", e.target.value)}
-                        placeholder="100000"
-                        className="w-full rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
-                      />
-                    </div>
-                  </div>
+                  )}
 
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
