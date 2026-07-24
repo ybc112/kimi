@@ -159,7 +159,7 @@ export default function Chat() {
   const selectedType = vaultTypes.find((v) => v.value === params.vaultType);
 
   return (
-    <div className="flex h-[calc(100vh-7rem)] flex-col gap-4 lg:h-[calc(100vh-3rem)]">
+    <div className="flex min-h-[calc(100vh-7rem)] flex-col gap-4 lg:h-[calc(100vh-3rem)]">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-xl font-bold text-white">金库生成</h2>
@@ -187,7 +187,7 @@ export default function Chat() {
         </button>
       </div>
 
-      <div className="flex flex-1 flex-col gap-4 overflow-hidden lg:flex-row">
+      <div className="flex flex-1 flex-col gap-4 lg:flex-row lg:overflow-hidden">
         {/* Left: Parameters */}
         <div className="flex w-full flex-col rounded-xl border border-[#23262A] bg-[#15171A] lg:w-[420px]">
           <div className="flex items-center justify-between border-b border-[#23262A] px-5 py-4">
@@ -216,7 +216,7 @@ export default function Chat() {
             ))}
           </div>
 
-          <div className="flex-1 overflow-auto p-5">
+          <div className="p-5 lg:flex-1 lg:overflow-auto">
             {activeTab === "generate" && (
               <div className="space-y-5">
                 <div>
@@ -383,7 +383,7 @@ export default function Chat() {
         </div>
 
         {/* Right: Generated Code */}
-        <div className="flex flex-1 flex-col min-h-0 rounded-xl border border-[#23262A] bg-[#15171A]">
+        <div className="flex flex-col rounded-xl border border-[#23262A] bg-[#15171A] lg:flex-1 lg:min-h-0">
           <div className="flex flex-col gap-3 border-b border-[#23262A] px-4 py-4 sm:flex-row sm:items-center sm:justify-between lg:px-5">
             <h3 className="font-semibold text-white">生成代码</h3>
             <div className="flex items-center gap-2">
@@ -414,8 +414,8 @@ export default function Chat() {
             </div>
           </div>
 
-          <div className="flex flex-1 flex-col overflow-hidden lg:flex-row">
-            <div className="flex-1 min-h-0 overflow-auto p-0">
+          <div className="flex flex-col lg:flex-1 lg:flex-row lg:overflow-hidden">
+            <div className="min-h-[360px] flex-1 overflow-auto p-0 lg:min-h-0">
               {!generatedCode ? (
                 <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-[#5F656D]">
                   <Sparkles className="h-10 w-10 text-[#303236]" />
