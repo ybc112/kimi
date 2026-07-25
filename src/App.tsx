@@ -5,6 +5,7 @@ import Chat from "@/pages/Chat";
 import Deploy from "@/pages/Deploy";
 import Docs from "@/pages/Docs";
 import Logs from "@/pages/Logs";
+import Trending from "@/pages/Trending";
 
 export default function App() {
   return (
@@ -16,6 +17,7 @@ export default function App() {
           <Route path="/deploy" element={<Deploy />} />
           <Route path="/docs" element={<Docs />} />
           <Route path="/logs" element={<Logs />} />
+          <Route path="/trending" element={<Trending />} />
         </Routes>
       </Layout>
     </Router>
