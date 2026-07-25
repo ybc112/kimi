@@ -45,9 +45,7 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
           <aside className="flex w-64 flex-col border-r border-[#23262A] bg-[#111215]">
             <div className="flex items-center justify-between border-b border-[#23262A] px-5 py-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#D0FF00]">
-                  <KimiIcon size={20} className="text-black" />
-                </div>
+                <KimiIcon size={36} className="h-9 w-9 rounded-lg" />
                 <div>
                   <h1 className="text-sm font-bold text-white">Kimi</h1>
                 </div>
@@ -68,9 +66,7 @@ function SidebarContent({ onLinkClick }: { onLinkClick: () => void }) {
   return (
     <>
       <div className="hidden items-center gap-3 px-6 py-5 lg:flex">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#D0FF00]">
-          <KimiIcon size={20} className="text-black" />
-        </div>
+        <KimiIcon size={36} className="h-9 w-9 rounded-lg" />
         <div>
           <h1 className="text-sm font-bold text-white">Kimi</h1>
           <p className="text-xs text-[#84888C]">Flap Vault 合约生成器</p>

@@ -18,9 +18,7 @@ export function Layout({ children }: LayoutProps) {
         {/* Mobile header */}
         <header className="flex items-center justify-between border-b border-[#23262A] bg-[#111215] px-4 py-3 lg:hidden">
           <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#D0FF00]">
-              <KimiIcon size={18} className="text-black" />
-            </div>
+            <KimiIcon size={32} className="h-8 w-8 rounded-lg" />
             <div>
               <h1 className="text-sm font-bold text-white">Kimi</h1>
               <p className="text-[10px] text-[#84888C]">Flap Vault 合约生成器</p>
