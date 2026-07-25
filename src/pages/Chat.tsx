@@ -14,7 +14,7 @@ import {
   Rocket,
 } from "lucide-react";
 import { useAppStore } from "@/store";
-import { sendChatMessage } from "@/lib/kimi";
+import { DEFAULT_MODEL, sendChatMessage } from "@/lib/kimi";
 import { FLAP_SYSTEM_PROMPT } from "@/lib/flapContext";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
@@ -110,7 +110,7 @@ export default function Chat() {
     try {
       const userPrompt = buildUserPrompt();
       const content = await sendChatMessage({
-        model: "deepseek-chat",
+        model: DEFAULT_MODEL,
         messages: [
           { role: "system", content: FLAP_SYSTEM_PROMPT },
           { role: "user", content: userPrompt },

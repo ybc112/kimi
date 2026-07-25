@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Send, Bot, Sparkles } from "lucide-react";
 import { useAppStore } from "@/store";
 import { MessageItem } from "@/components/MessageItem";
-import { sendChatMessage } from "@/lib/kimi";
+import { DEFAULT_MODEL, sendChatMessage } from "@/lib/kimi";
 
 interface Message {
   role: "user" | "assistant";
@@ -60,7 +60,7 @@ export default function Home() {
       }));
 
       const reply = await sendChatMessage({
-        model: "deepseek-chat",
+        model: DEFAULT_MODEL,
         messages: [
           {
             role: "system",

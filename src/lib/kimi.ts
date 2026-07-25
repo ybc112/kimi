@@ -3,6 +3,10 @@ import { ChatRequest } from "@/types";
 const API_URL = "https://api.deepseek.com/chat/completions";
 const API_KEY = "sk-745928dc711640af96f0bcab66202aba";
 
+// DeepSeek's current API only accepts the v4 model identifiers below.
+// Keep the model in one place so every feature uses the same supported value.
+export const DEFAULT_MODEL = "deepseek-v4-flash";
+
 export async function sendChatMessage(request: ChatRequest): Promise<string> {
   const response = await fetch(API_URL, {
     method: "POST",
@@ -11,7 +15,7 @@ export async function sendChatMessage(request: ChatRequest): Promise<string> {
       Authorization: `Bearer ${API_KEY}`,
     },
     body: JSON.stringify({
-      model: request.model || "deepseek-chat",
+      model: request.model || DEFAULT_MODEL,
       messages: request.messages,
       stream: false,
       temperature: request.temperature ?? 0.3,
