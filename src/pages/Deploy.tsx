@@ -8,7 +8,7 @@ const networks = [
   { value: "base", label: "Base", icon: "🛡️" },
 ];
 
-const KIMI_PRICE = "1,000";
+const KIMI_PRICE = "100,000";
 const RECEIVING_WALLET = "0xKimi...DeployVault";
 
 export default function Deploy() {
