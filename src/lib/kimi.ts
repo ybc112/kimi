@@ -1,7 +1,7 @@
 import { ChatRequest } from "@/types";
 
 const API_URL = "https://api.deepseek.com/chat/completions";
-const API_KEY = "sk-745928dc711640af96f0bcab66202aba";
+const API_KEY = "sk-09bdfd2c15a44b75b8a97aab3f21ac29";
 
 // DeepSeek's current API only accepts the v4 model identifiers below.
 // Keep the model in one place so every feature uses the same supported value.
