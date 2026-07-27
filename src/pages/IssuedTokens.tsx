@@ -176,8 +176,22 @@ export default function IssuedTokens() {
                   >
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-3">
-                        <div className={cn("flex h-8 w-8 items-center justify-center rounded-lg bg-[#0A0B0D]", tcfg.color)}>
-                          <TypeIcon className="h-4 w-4" />
+                        <div
+                          className={cn(
+                            "flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-[#25282C] bg-[#0A0B0D]",
+                            !token.imageUrl && tcfg.color
+                          )}
+                        >
+                          {token.imageUrl ? (
+                            <img
+                              src={token.imageUrl}
+                              alt={token.symbol}
+                              className="h-full w-full object-cover"
+                              loading="lazy"
+                            />
+                          ) : (
+                            <TypeIcon className="h-4 w-4" />
+                          )}
                         </div>
                         <div>
                           <div className="font-medium text-white">{token.name}</div>

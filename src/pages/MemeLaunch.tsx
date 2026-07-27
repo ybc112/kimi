@@ -19,7 +19,7 @@ import { useAppStore } from "@/store";
 import { useWallet } from "@/hooks/useWallet";
 import { useIssuedTokens } from "@/hooks/useIssuedTokens";
 import { useContractData } from "@/hooks/useContractData";
-import { DEFAULT_MODEL, sendChatMessage } from "@/lib/kimi";
+import { DEFAULT_MODEL, sendChatMessage, generateImage } from "@/lib/kimi";
 import { cn } from "@/lib/utils";
 import Empty from "@/components/Empty";
 import {
@@ -98,6 +98,7 @@ interface SavedMeme {
   form: CreateTokenFormValues;
   description: string;
   avatar: ReturnType<typeof randomAvatar>;
+  imageUrl: string;
 }
 
 function readSavedMeme(): SavedMeme | null {
@@ -125,6 +126,7 @@ export default function MemeLaunch() {
   const [generatedDescription, setGeneratedDescription] = useState("");
 
   const [generating, setGenerating] = useState(false);
+  const [generatingImage, setGeneratingImage] = useState(false);
   const [txStatus, setTxStatus] = useState<"idle" | "pending" | "success" | "error">("idle");
   const [txHash, setTxHash] = useState<string>("");
   const [tokenAddress, setTokenAddress] = useState<string>("");
@@ -138,15 +140,39 @@ export default function MemeLaunch() {
       setForm(saved.form);
       setGeneratedDescription(saved.description);
       setAvatar(saved.avatar);
+      setImageUrl(saved.imageUrl || "");
     }
   }, []);
 
   const updateForm = (key: keyof CreateTokenFormValues, value: string | boolean) => {
     setForm((prev) => {
       const next = { ...prev, [key]: value };
-      saveMeme({ concept, form: next, description: generatedDescription, avatar });
+      saveMeme({ concept, form: next, description: generatedDescription, avatar, imageUrl });
       return next;
     });
+  };
+
+  const handleGenerateImage = async () => {
+    if (!form.name.trim() || generatingImage) return;
+    setGeneratingImage(true);
+    setErrorMessage("");
+    addLog({ type: "info", message: "正在生成 Meme 代币头像" });
+
+    try {
+      const prompt = `A cute and iconic meme cryptocurrency token mascot for "${form.name}" (${form.symbol}). Cartoon style, vibrant colors, clean background, suitable as a token logo. Theme: ${concept || "meme culture"}.`;
+      const url = await generateImage({ prompt, size: "1024x1024" });
+      setImageUrl(url);
+      saveMeme({ concept, form, description: generatedDescription, avatar, imageUrl: url });
+      addLog({ type: "success", message: "Meme 头像生成成功", detail: url });
+      showToast({ type: "success", message: "头像生成成功" });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      setErrorMessage(`头像生成失败：${detail}`);
+      addLog({ type: "error", message: "Meme 头像生成失败", detail });
+      showToast({ type: "error", message: "头像生成失败" });
+    } finally {
+      setGeneratingImage(false);
+    }
   };
 
   const handleGenerate = useCallback(async () => {
@@ -185,7 +211,7 @@ export default function MemeLaunch() {
         setForm(nextForm);
         setGeneratedDescription(String(parsed.description));
         setAvatar(nextAvatar);
-        saveMeme({ concept, form: nextForm, description: String(parsed.description), avatar: nextAvatar });
+        saveMeme({ concept, form: nextForm, description: String(parsed.description), avatar: nextAvatar, imageUrl });
         addLog({
           type: "success",
           message: "Meme 文案生成成功",
@@ -254,6 +280,7 @@ export default function MemeLaunch() {
           status: "success",
           totalSupply: form.totalSupply,
           type: "meme",
+          imageUrl,
         });
         recordLaunch(form.name);
       }
@@ -339,7 +366,7 @@ export default function MemeLaunch() {
               value={concept}
               onChange={(e) => {
                 setConcept(e.target.value);
-                saveMeme({ concept: e.target.value, form, description: generatedDescription, avatar });
+                saveMeme({ concept: e.target.value, form, description: generatedDescription, avatar, imageUrl });
               }}
               placeholder="输入一个 Meme 概念，例如：AI 猫、火星狗、月球蛙..."
               rows={4}
@@ -380,37 +407,60 @@ export default function MemeLaunch() {
                 <ImageIcon className="h-4 w-4 text-[#2EDEDB]" />
                 代币头像
               </h3>
-              <button
-                onClick={() => {
-                  const next = randomAvatar();
-                  setAvatar(next);
-                  saveMeme({ concept, form, description: generatedDescription, avatar: next });
-                }}
-                className="kimi-btn-secondary py-1.5 px-2 text-xs"
-              >
-                <Dices className="h-3 w-3" />
-                换一换
-              </button>
-            </div>
-            <div
-              className="flex aspect-square flex-col items-center justify-center overflow-hidden rounded-xl border border-dashed border-[#303236] bg-[#0A0B0D] p-4 text-center"
-              style={{
-                backgroundImage: `${avatar.pattern}, ${imageUrl ? `url(${imageUrl})` : avatar.background}`,
-                backgroundSize: "cover",
-                backgroundPosition: "center",
-              }}
-            >
-              {!imageUrl && (
-                <div className="rounded-full border-2 border-white/30 bg-black/20 px-4 py-2 text-xl font-bold text-white backdrop-blur-sm">
-                  {form.symbol?.slice(0, 2) || "?"}
+              <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      const next = randomAvatar();
+                      setAvatar(next);
+                      saveMeme({ concept, form, description: generatedDescription, avatar: next, imageUrl });
+                    }}
+                    className="kimi-btn-secondary py-1.5 px-2 text-xs"
+                  >
+                    <Dices className="h-3 w-3" />
+                    换一换
+                  </button>
+                  <button
+                    onClick={handleGenerateImage}
+                    disabled={!form.name || generatingImage}
+                    className="kimi-btn-primary py-1.5 px-2 text-xs disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {generatingImage ? <Loader2 className="h-3 w-3 animate-spin" /> : <ImageIcon className="h-3 w-3" />}
+                    AI 生图
+                  </button>
                 </div>
+            </div>
+            <div className="relative flex aspect-square flex-col items-center justify-center overflow-hidden rounded-xl border border-dashed border-[#303236] bg-[#0A0B0D] p-4 text-center">
+              {imageUrl ? (
+                <img
+                  src={imageUrl}
+                  alt={form.symbol}
+                  className="absolute inset-0 h-full w-full object-cover"
+                  loading="lazy"
+                />
+              ) : (
+                <>
+                  <div
+                    className="absolute inset-0 opacity-80"
+                    style={{
+                      backgroundImage: `${avatar.pattern}, ${avatar.background}`,
+                      backgroundSize: "cover",
+                      backgroundPosition: "center",
+                    }}
+                  />
+                  <div className="relative rounded-full border-2 border-white/30 bg-black/20 px-4 py-2 text-xl font-bold text-white backdrop-blur-sm">
+                    {form.symbol?.slice(0, 2) || "?"}
+                  </div>
+                </>
               )}
             </div>
             <input
               type="text"
               value={imageUrl}
-              onChange={(e) => setImageUrl(e.target.value)}
-              placeholder="预留 imageUrl（可粘贴测试图片链接）"
+              onChange={(e) => {
+                setImageUrl(e.target.value);
+                saveMeme({ concept, form, description: generatedDescription, avatar, imageUrl: e.target.value });
+              }}
+              placeholder="AI 生成的头像链接会显示在这里，也支持粘贴自定义图片链接"
               className="kimi-input mt-3 text-xs"
             />
           </div>

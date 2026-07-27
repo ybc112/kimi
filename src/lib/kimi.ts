@@ -1,7 +1,11 @@
 import { ChatRequest } from "@/types";
 
 const API_URL = "https://api.deepseek.com/chat/completions";
-const API_KEY = "sk-09bdfd2c15a44b75b8a97aab3f21ac29";
+const API_KEY = "sk-b43fffc8ee0c4a2880dbf200423a68f2";
+
+// OpenAI-compatible image generation endpoint
+const IMAGE_API_URL = "https://api.iotwq.top/v1/images/generations";
+const IMAGE_API_KEY = "sk-ae2f0541b974ed089457b508ea37db5ddab47d6090cbd86a9716482ce576e4f7";
 
 // DeepSeek's current API only accepts the v4 model identifiers below.
 // Keep the model in one place so every feature uses the same supported value.
@@ -35,4 +39,41 @@ export async function sendChatMessage(request: ChatRequest): Promise<string> {
   }
 
   return content;
+}
+
+export interface GenerateImageRequest {
+  prompt: string;
+  size?: "1024x1024" | "1792x1024" | "1024x1792";
+  model?: string;
+  n?: number;
+}
+
+export async function generateImage(request: GenerateImageRequest): Promise<string> {
+  const response = await fetch(IMAGE_API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${IMAGE_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: request.model || "dall-e-3",
+      prompt: request.prompt,
+      n: request.n ?? 1,
+      size: request.size || "1024x1024",
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "Unknown error");
+    throw new Error(`Image API error (${response.status}): ${errorText}`);
+  }
+
+  const data = await response.json();
+  const url = data.data?.[0]?.url;
+
+  if (typeof url !== "string") {
+    throw new Error("Invalid image API response format");
+  }
+
+  return url;
 }

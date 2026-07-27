@@ -14,6 +14,7 @@ export interface CreateTokenInput {
   status?: TokenStatus;
   totalSupply?: string;
   type: TokenType;
+  imageUrl?: string;
 }
 
 /**

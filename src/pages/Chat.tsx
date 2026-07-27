@@ -362,13 +362,13 @@ export default function Chat() {
         </div>
 
         {/* Left: Parameters */}
-        <div className="flex w-full flex-col rounded-2xl border border-[#25282C] bg-[#111215] lg:w-[420px]">
+        <div className="flex w-full flex-col rounded-2xl border border-[#25282C] bg-[#111215] lg:w-[480px]">
           <div className="flex items-center justify-between border-b border-[#25282C] px-5 py-4">
             <h3 className="font-semibold text-white">生成参数</h3>
-            <span className="rounded-full bg-[#D0FF00]/10 px-2 py-0.5 text-xs text-[#D0FF00]">可配置 Remix</span>
+            <span className="rounded-full bg-[#D0FF00]/10 px-2.5 py-0.5 text-xs text-[#D0FF00]">可配置 Remix</span>
           </div>
 
-          <div className="flex border-b border-[#25282C]">
+          <div className="flex border-b border-[#25282C] px-2">
             {[
               { key: "generate", label: "生成说明" },
               { key: "params", label: "参数说明" },
@@ -378,13 +378,14 @@ export default function Chat() {
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key as typeof activeTab)}
                 className={cn(
-                  "flex-1 border-b-2 py-2.5 text-xs font-medium transition-colors",
-                  activeTab === tab.key
-                    ? "border-[#D0FF00] text-[#D0FF00]"
-                    : "border-transparent text-[#6B7280] hover:text-[#9CA3AF]"
+                  "relative flex-1 px-3 py-3 text-sm font-medium transition-colors",
+                  activeTab === tab.key ? "text-[#D0FF00]" : "text-[#6B7280] hover:text-[#9CA3AF]"
                 )}
               >
                 {tab.label}
+                {activeTab === tab.key && (
+                  <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-t-full bg-[#D0FF00]" />
+                )}
               </button>
             ))}
           </div>
@@ -454,14 +455,14 @@ export default function Chat() {
                           key={t.value}
                           onClick={() => updateParam("vaultType", t.value)}
                           className={cn(
-                            "flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-xs transition-all",
+                            "flex flex-col items-start gap-1.5 rounded-xl border p-3 text-left transition-all",
                             params.vaultType === t.value
                               ? "border-[#D0FF00]/50 bg-[#D0FF00]/10 text-[#D0FF00]"
                               : "border-[#25282C] bg-[#0A0B0D] text-[#9CA3AF] hover:border-[#D0FF00]/30 hover:text-white"
                           )}
                         >
-                          <t.icon className="h-3.5 w-3.5" />
-                          {t.label}
+                          <t.icon className="h-4 w-4" />
+                          <span className="text-xs font-medium">{t.label}</span>
                         </button>
                       ))}
                     </div>
@@ -470,27 +471,32 @@ export default function Chat() {
                   {/* Network cards */}
                   <div>
                     <label className="mb-2 block text-xs text-[#9CA3AF]">目标网络</label>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 gap-2">
                       {networks.map((n) => (
                         <button
                           key={n.value}
                           onClick={() => updateParam("network", n.value)}
                           className={cn(
-                            "flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-xs transition-all",
+                            "flex items-center justify-between rounded-xl border px-4 py-3 text-left text-sm transition-all",
                             params.network === n.value
                               ? "border-[#D0FF00]/50 bg-[#D0FF00]/10 text-[#D0FF00]"
                               : "border-[#25282C] bg-[#0A0B0D] text-[#9CA3AF] hover:border-[#D0FF00]/30 hover:text-white"
                           )}
                         >
-                          <span className="h-2 w-2 rounded-full bg-current" />
-                          {n.label}
+                          <span className="font-medium">{n.label}</span>
+                          <span
+                            className={cn(
+                              "h-2 w-2 rounded-full",
+                              params.network === n.value ? "bg-[#D0FF00]" : "bg-[#6B7280]"
+                            )}
+                          />
                         </button>
                       ))}
                     </div>
                   </div>
 
                   <div>
-                    <label className="mb-1.5 block text-xs text-[#9CA3AF]">接收次数钱包</label>
+                    <label className="mb-1.5 block text-xs text-[#9CA3AF]">接收地址（税收 / Mint 资金）</label>
                     <input
                       type="text"
                       value={params.treasuryReceiver}
@@ -527,7 +533,7 @@ export default function Chat() {
 
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
-                      <label className="mb-1.5 block text-xs text-[#9CA3AF]">Treasury split %</label>
+                      <label className="mb-1.5 block text-xs text-[#9CA3AF]">Treasury 分成比例 (%)</label>
                       <input
                         type="text"
                         value={params.treasurySplit}
@@ -537,7 +543,7 @@ export default function Chat() {
                       />
                     </div>
                     <div>
-                      <label className="mb-1.5 block text-xs text-[#9CA3AF]">Second wallet</label>
+                      <label className="mb-1.5 block text-xs text-[#9CA3AF]">二级钱包地址</label>
                       <input
                         type="text"
                         value={params.secondWallet}

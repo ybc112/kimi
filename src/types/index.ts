@@ -48,6 +48,7 @@ export interface IssuedToken {
   status: TokenStatus;
   totalSupply?: string;
   type: TokenType;
+  imageUrl?: string;
 }
 
 /** 热搜榜真实数据结构 */
