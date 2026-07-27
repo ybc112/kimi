@@ -17,6 +17,7 @@ import {
   Layers,
   Check,
   Download,
+  Upload,
 } from "lucide-react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
@@ -57,7 +58,7 @@ const deploySteps = [
 ];
 
 export default function Deploy() {
-  const { addLog } = useAppStore();
+  const { addLog, showToast, addIssuedToken } = useAppStore();
   const wallet = useWallet();
 
   const [code, setCode] = useState("");
@@ -87,6 +88,7 @@ export default function Deploy() {
     if (!text) return;
     await navigator.clipboard.writeText(text);
     setCopiedField(field);
+    showToast({ type: "success", message: "已复制" });
     setTimeout(() => setCopiedField(null), 2000);
   };
 
@@ -94,6 +96,7 @@ export default function Deploy() {
     if (!code) return;
     await navigator.clipboard.writeText(code);
     setCopiedCode(true);
+    showToast({ type: "success", message: "代码已复制" });
     setTimeout(() => setCopiedCode(false), 2000);
   };
 
@@ -108,14 +111,26 @@ export default function Deploy() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    showToast({ type: "success", message: "文件已下载" });
+  };
+
+  const handleLoadLocal = () => {
+    const saved = localStorage.getItem("flap-generated-code");
+    if (saved) {
+      setCode(saved);
+      showToast({ type: "success", message: "已从本地加载代码" });
+    } else {
+      showToast({ type: "info", message: "本地没有保存的代码" });
+    }
   };
 
   const handleCompile = () => {
     addLog({ type: "info", message: "编译服务稍后接入", detail: "当前为占位功能，请使用 Remix / Hardhat 本地编译后粘贴 Bytecode 与 ABI" });
     setErrorMessage("");
+    showToast({ type: "info", message: "编译服务稍后接入" });
   };
 
-  const handleDeploy = async () => {
+  const runDeploy = async () => {
     setErrorMessage("");
     setTxHash("");
     setContractAddress("");
@@ -169,11 +184,23 @@ export default function Deploy() {
       setTxHash(result.deployTxHash);
       setStatus("success");
 
+      addIssuedToken({
+        name: "Deployed Contract",
+        symbol: "DEPLOY",
+        address: result.address,
+        network: networks.find((n) => n.value === network)?.label || "BNB Smart Chain",
+        status: "active",
+        txHash: result.deployTxHash,
+        type: "vault",
+        source: "deploy",
+      });
+
       addLog({
         type: "success",
         message: `合约已部署到 ${network}: ${result.address}`,
         detail: `tx: ${result.deployTxHash}`,
       });
+      showToast({ type: "success", message: "合约部署成功" });
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       setErrorMessage(detail);
@@ -183,7 +210,33 @@ export default function Deploy() {
         message: "合约部署失败",
         detail,
       });
+      showToast({ type: "error", message: "部署失败" });
     }
+  };
+
+  const handleDeploy = async () => {
+    if (!wallet.isConnected) {
+      await wallet.connectWallet();
+      return;
+    }
+    if (isWrongNetwork) {
+      await wallet.switchToBSC();
+      return;
+    }
+    await runDeploy();
+  };
+
+  const handleBurnAndDeploy = async () => {
+    if (!wallet.isConnected) {
+      await wallet.connectWallet();
+      return;
+    }
+    if (isWrongNetwork) {
+      await wallet.switchToBSC();
+      return;
+    }
+    addLog({ type: "info", message: "开始销毁部署费并上链", detail: `销毁 ${BURN_AMOUNT} KIMI（概念）并调用部署流程` });
+    await runDeploy();
   };
 
   return (
@@ -251,12 +304,19 @@ export default function Deploy() {
             </div>
 
             {/* Toolbar */}
-            <div className="flex items-center justify-between border-b border-[#23262A] px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#23262A] px-4 py-3">
               <div className="flex items-center gap-2 text-sm font-medium text-white">
                 <FileCode className="h-4 w-4 text-[#D0FF00]" />
                 合约源码
               </div>
               <div className="flex items-center gap-2">
+                <button
+                  onClick={handleLoadLocal}
+                  className="flex items-center gap-1.5 rounded-lg border border-[#303236] bg-[#0B0D0E] px-2.5 py-1.5 text-xs text-[#9CA3AF] transition-colors hover:border-[#D0FF00]/30 hover:text-white"
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  从本地加载
+                </button>
                 <button
                   onClick={handleCopyCode}
                   disabled={!code}
@@ -352,11 +412,16 @@ export default function Deploy() {
             </div>
 
             <button
-              onClick={handleCompile}
-              className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#D0FF00]/30 bg-[#D0FF00]/10 py-2.5 text-sm font-medium text-[#D0FF00] transition-colors hover:bg-[#D0FF00]/20"
+              onClick={handleBurnAndDeploy}
+              disabled={status === "pending"}
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#FF6B6B]/10 py-2.5 text-sm font-medium text-[#FF6B6B] transition-colors hover:bg-[#FF6B6B]/20 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              <Layers className="h-4 w-4" />
-              编译合约
+              {status === "pending" ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Flame className="h-4 w-4" />
+              )}
+              {!wallet.isConnected ? "连接钱包并销毁部署" : isWrongNetwork ? "切换网络并部署" : "确认销毁并部署"}
             </button>
           </div>
 
@@ -495,7 +560,7 @@ export default function Deploy() {
 
             <button
               onClick={handleDeploy}
-              disabled={status === "pending" || !wallet.isConnected || (mode === "factory" && DEPLOY_FACTORY_ADDRESS === "0x0000000000000000000000000000000000000000")}
+              disabled={status === "pending" || (mode === "factory" && DEPLOY_FACTORY_ADDRESS === "0x0000000000000000000000000000000000000000")}
               className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#D0FF00] py-3 text-sm font-semibold text-black transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {status === "pending" ? (
@@ -503,7 +568,7 @@ export default function Deploy() {
               ) : (
                 <Rocket className="h-4 w-4" />
               )}
-              {status === "pending" ? "部署中..." : "一键部署"}
+              {status === "pending" ? "部署中..." : !wallet.isConnected ? "连接钱包" : isWrongNetwork ? "切换网络" : "一键部署"}
             </button>
           </div>
         </div>

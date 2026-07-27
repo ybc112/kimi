@@ -9,8 +9,22 @@ import {
   ArrowRight,
   Info,
   CheckCircle2,
+  Check,
+  Wallet,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useWallet } from "@/hooks/useWallet";
+import { useAppStore } from "@/store";
+import { ethers } from "ethers";
+import {
+  SNOWBALL_LAUNCHPAD_ADDRESS,
+  LAUNCHPAD_ABI,
+  CREATE_FEE_WEI,
+  BSC_USDT_ADDRESS,
+  buildCreateTokenParams,
+} from "@/lib/contracts/snowball";
 
 const TABS = [
   { key: "guide", label: "发币指南", icon: BookOpen },
@@ -62,9 +76,111 @@ const formFields = [
   },
 ];
 
+const CHECKLIST = [
+  { id: "vault", label: "已在 VaultAI 生成 Vault 合约" },
+  { id: "factory", label: "已部署 Factory 合约到链上" },
+  { id: "token", label: "已确认 Token Name / Symbol / Supply" },
+  { id: "tax", label: "已设置 Buy/Sell Tax 与拆分" },
+  { id: "wallet", label: "已连接钱包并切换到 BSC" },
+];
+
 export default function FlapLaunch() {
   const navigate = useNavigate();
+  const wallet = useWallet();
+  const { addLog, showToast, addIssuedToken } = useAppStore();
   const [activeTab, setActiveTab] = useState<TabKey>("guide");
+  const [checked, setChecked] = useState<Record<string, boolean>>({});
+
+  const [form, setForm] = useState({
+    name: "",
+    symbol: "",
+    supply: "1000000000",
+    tax: "500",
+  });
+  const [launching, setLaunching] = useState(false);
+  const [result, setResult] = useState<{ address: string; txHash: string } | null>(null);
+
+  const toggleCheck = (id: string) => {
+    setChecked((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const handleInternalLaunch = async () => {
+    if (!wallet.isConnected || !wallet.signer) {
+      await wallet.connectWallet();
+      return;
+    }
+    if (!wallet.isBSC) {
+      await wallet.switchToBSC();
+      return;
+    }
+    if (!form.name.trim() || !form.symbol.trim() || !form.supply) {
+      showToast({ type: "error", message: "请填写完整的代币信息" });
+      return;
+    }
+
+    setLaunching(true);
+    addLog({ type: "info", message: "正在通过工厂合约创建代币" });
+
+    try {
+      const params = buildCreateTokenParams({
+        name: form.name,
+        symbol: form.symbol,
+        totalSupply: form.supply,
+        hiddenFeeReceiver: wallet.account || "",
+        rewardToken: BSC_USDT_ADDRESS,
+        buyHiddenTaxBp: "0",
+        buyBurnBp: "0",
+        buyLiquidityBp: "0",
+        buyDividendBp: form.tax,
+        sellHiddenTaxBp: "0",
+        sellBurnBp: "0",
+        sellLiquidityBp: "0",
+        sellDividendBp: form.tax,
+        ordinaryWhitelist: "",
+        limitAccounts: "",
+        limitQuotas: "",
+        limitModeEnabled: false,
+        requestAutoVerify: true,
+      });
+
+      const contract = new ethers.Contract(SNOWBALL_LAUNCHPAD_ADDRESS, LAUNCHPAD_ABI, wallet.signer);
+      const tx = await contract.createToken(params, { value: CREATE_FEE_WEI });
+      const receipt = await tx.wait();
+
+      const event = receipt?.logs
+        ?.map((log: ethers.Log) => {
+          try {
+            return contract.interface.parseLog(log);
+          } catch {
+            return null;
+          }
+        })
+        .find((parsed: ethers.LogDescription | null) => parsed?.name === "TokenCreated");
+
+      const tokenAddress = (event?.args?.token as string) || "";
+      setResult({ address: tokenAddress, txHash: tx.hash });
+
+      addIssuedToken({
+        name: form.name,
+        symbol: form.symbol,
+        address: tokenAddress,
+        network: "BNB Smart Chain",
+        status: "active",
+        txHash: tx.hash,
+        type: "token",
+        source: "flap-launch",
+      });
+
+      addLog({ type: "success", message: "站内一键发币成功", detail: tokenAddress });
+      showToast({ type: "success", message: "代币创建成功" });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      addLog({ type: "error", message: "站内一键发币失败", detail });
+      showToast({ type: "error", message: "创建失败" });
+    } finally {
+      setLaunching(false);
+    }
+  };
 
   return (
     <div className="flex min-h-[calc(100vh-8rem)] flex-col gap-6">
@@ -104,6 +220,47 @@ export default function FlapLaunch() {
 
       {activeTab === "guide" && (
         <>
+          {/* Interactive checklist */}
+          <div className="rounded-xl border border-[#23262A] bg-[#15171A] p-5">
+            <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-white">
+              <CheckCircle2 className="h-4 w-4 text-[#D0FF00]" />
+              发币前检查清单
+            </h3>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {CHECKLIST.map((item) => (
+                <label
+                  key={item.id}
+                  className={cn(
+                    "flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors",
+                    checked[item.id]
+                      ? "border-[#D0FF00]/30 bg-[#D0FF00]/10"
+                      : "border-[#303236] bg-[#0B0D0E] hover:border-[#D0FF00]/30"
+                  )}
+                >
+                  <div
+                    className={cn(
+                      "flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors",
+                      checked[item.id]
+                        ? "border-[#D0FF00] bg-[#D0FF00] text-black"
+                        : "border-[#5F656D] bg-transparent"
+                    )}
+                  >
+                    {checked[item.id] && <Check className="h-3.5 w-3.5" />}
+                  </div>
+                  <input
+                    type="checkbox"
+                    className="sr-only"
+                    checked={checked[item.id] || false}
+                    onChange={() => toggleCheck(item.id)}
+                  />
+                  <span className={cn("text-sm", checked[item.id] ? "text-white" : "text-[#9CA3AF]")}>
+                    {item.label}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+
           {/* Steps */}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <StepCard
@@ -186,18 +343,105 @@ export default function FlapLaunch() {
       )}
 
       {activeTab === "internal" && (
-        <div className="flex flex-col items-center justify-center rounded-xl border border-[#23262A] bg-[#15171A] p-10 text-center">
-          <MousePointerClick className="mb-4 h-12 w-12 text-[#D0FF00]" />
-          <h3 className="mb-2 text-lg font-semibold text-white">站内一键发币</h3>
-          <p className="max-w-md text-sm text-[#84888C]">
-            该功能正在对接 Flap SDK，完成后可直接在站内完成代币创建。现在请先使用「发币指南」前往 Flap 官网操作。
-          </p>
+        <div className="rounded-xl border border-[#23262A] bg-[#15171A] p-6 lg:p-8">
+          <div className="mb-6 flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#D0FF00]/10">
+              <MousePointerClick className="h-5 w-5 text-[#D0FF00]" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-white">站内一键发币</h3>
+              <p className="text-xs text-[#84888C]">填写基础参数，直接通过已配置工厂创建代币</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <label className="mb-1.5 block text-xs text-[#84888C]">Token Name</label>
+              <input
+                type="text"
+                value={form.name}
+                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                placeholder="Fcodex Token"
+                className="w-full rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs text-[#84888C]">Symbol</label>
+              <input
+                type="text"
+                value={form.symbol}
+                onChange={(e) => setForm((f) => ({ ...f, symbol: e.target.value.toUpperCase() }))}
+                placeholder="FCDX"
+                className="w-full rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs text-[#84888C]">Total Supply</label>
+              <input
+                type="text"
+                value={form.supply}
+                onChange={(e) => setForm((f) => ({ ...f, supply: e.target.value.replace(/\D/g, "") }))}
+                placeholder="1000000000"
+                className="w-full rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs text-[#84888C]">Tax (Basis Points)</label>
+              <input
+                type="text"
+                value={form.tax}
+                onChange={(e) => setForm((f) => ({ ...f, tax: e.target.value.replace(/\D/g, "") }))}
+                placeholder="500"
+                className="w-full rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
+              />
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-lg border border-[#2EDEDB]/20 bg-[#2EDEDB]/5 p-3 text-xs text-[#2EDEDB]">
+            <Info className="mb-1 inline-block h-3.5 w-3.5" />
+            简化模式将使用默认分红代币 USDT，税收全部作为分红。如需更复杂参数请使用 Meme 发射或外部 Flap 页面。
+          </div>
+
+          {result && (
+            <div className="mt-4 rounded-lg border border-[#D0FF00]/30 bg-[#D0FF00]/10 p-4 text-sm">
+              <div className="mb-2 flex items-center gap-2 font-medium text-[#D0FF00]">
+                <CheckCircle2 className="h-4 w-4" />
+                代币创建成功
+              </div>
+              <div className="flex flex-col gap-1 text-xs text-[#84888C]">
+                <div className="flex items-center gap-2">
+                  <span>合约地址</span>
+                  <code className="text-white">{result.address}</code>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span>交易哈希</span>
+                  <code className="text-white">{result.txHash}</code>
+                </div>
+              </div>
+            </div>
+          )}
+
           <button
-            onClick={() => setActiveTab("guide")}
-            className="mt-6 flex items-center gap-2 rounded-lg bg-[#D0FF00] px-5 py-2.5 text-sm font-semibold text-black transition-opacity hover:opacity-90"
+            onClick={handleInternalLaunch}
+            disabled={launching}
+            className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-[#D0FF00] py-3 text-sm font-semibold text-black transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            查看发币指南
-            <ArrowRight className="h-4 w-4" />
+            {launching ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : !wallet.isConnected ? (
+              <Wallet className="h-4 w-4" />
+            ) : !wallet.isBSC ? (
+              <Wallet className="h-4 w-4" />
+            ) : (
+              <Rocket className="h-4 w-4" />
+            )}
+            {launching
+              ? "创建中…"
+              : !wallet.isConnected
+              ? "连接钱包"
+              : !wallet.isBSC
+              ? "切换到 BSC"
+              : "确认创建代币"}
           </button>
         </div>
       )}

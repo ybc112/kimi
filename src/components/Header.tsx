@@ -15,6 +15,7 @@ import {
   LogOut,
   Menu,
   X,
+  Wand2,
 } from "lucide-react";
 import { KimiIcon } from "@/components/KimiIcon";
 import { useWallet } from "@/hooks/useWallet";
@@ -24,6 +25,7 @@ const navItems = [
   { to: "/", icon: LayoutDashboard, label: "首页" },
   { to: "/chat", icon: MessageSquare, label: "对话" },
   { to: "/vault", icon: Box, label: "金库生成" },
+  { to: "/page-builder", icon: Wand2, label: "AI 页面" },
   { to: "/deploy", icon: Rocket, label: "合约部署" },
   { to: "/flap-launch", icon: CircleDollarSign, label: "Flap 发币" },
   { to: "/issued-tokens", icon: List, label: "已发代币" },

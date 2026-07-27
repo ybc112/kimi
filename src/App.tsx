@@ -9,6 +9,7 @@ import Trending from "@/pages/Trending";
 import MemeLaunch from "@/pages/MemeLaunch";
 import FlapLaunch from "@/pages/FlapLaunch";
 import IssuedTokens from "@/pages/IssuedTokens";
+import PageBuilder from "@/pages/PageBuilder";
 
 export default function App() {
   return (
@@ -25,6 +26,7 @@ export default function App() {
           <Route path="/docs" element={<Docs />} />
           <Route path="/logs" element={<Logs />} />
           <Route path="/trending" element={<Trending />} />
+          <Route path="/page-builder" element={<PageBuilder />} />
         </Routes>
       </Layout>
     </Router>

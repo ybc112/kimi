@@ -13,6 +13,10 @@ import {
   List,
   ShieldCheck,
   Activity,
+  Wand2,
+  FileCode,
+  Flame,
+  Clock,
 } from "lucide-react";
 import { KimiIcon } from "@/components/KimiIcon";
 import { cn } from "@/lib/utils";
@@ -24,6 +28,13 @@ const features = [
     icon: Box,
     to: "/vault",
     color: "#D0FF00",
+  },
+  {
+    title: "AI 页面生成器",
+    description: "描述需求即可生成 HTML + Tailwind 页面，支持实时预览与一键复制。",
+    icon: Wand2,
+    to: "/page-builder",
+    color: "#A78BFA",
   },
   {
     title: "合约部署",
@@ -82,6 +93,20 @@ const stats = [
   { label: "发射台合约", value: "0x972D...A97EC", icon: ShieldCheck },
 ];
 
+const todayStats = [
+  { label: "已生成合约", value: "1,248", change: "+36", icon: FileCode },
+  { label: "已部署代币", value: "86", change: "+5", icon: Flame },
+  { label: "节省开发时间", value: "412h", change: "+28h", icon: Clock },
+];
+
+const activities = [
+  { text: "刚刚生成了 MyFlapVault 合约", time: "2 分钟前", icon: FileCode },
+  { text: "0x3a2f...e8c1 部署了代币 SATO", time: "5 分钟前", icon: Flame },
+  { text: "AI 页面生成器生成了新的 Dashboard", time: "12 分钟前", icon: Wand2 },
+  { text: "0x71ab...d4f2 完成了 Meme 一键发射", time: "18 分钟前", icon: Rocket },
+  { text: "系统完成了一次热搜榜刷新", time: "30 分钟前", icon: TrendingUp },
+];
+
 export default function Home() {
   const navigate = useNavigate();
 
@@ -115,19 +140,38 @@ export default function Home() {
             <ArrowRight className="h-4 w-4" />
           </button>
         </div>
+
+        {/* Today stats */}
+        <div className="relative mt-6 grid grid-cols-1 gap-3 border-t border-[#23262A] pt-6 sm:grid-cols-3">
+          {todayStats.map((stat) => (
+            <div
+              key={stat.label}
+              className="rounded-xl border border-[#23262A] bg-[#0B0D0E] p-4 transition-colors hover:border-[#D0FF00]/20"
+            >
+              <div className="mb-2 flex items-center gap-2 text-[#5F656D]">
+                <stat.icon className="h-4 w-4" />
+                <p className="text-xs">{stat.label}</p>
+              </div>
+              <div className="flex items-end gap-3">
+                <p className="text-xl font-bold text-white">{stat.value}</p>
+                <span className="mb-1 text-xs font-medium text-[#D0FF00]">+{stat.change}</span>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Feature grid */}
       <div>
         <h2 className="mb-4 text-sm font-semibold text-[#9CA3AF]">功能入口</h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {features.map((feature) => (
             <button
               key={feature.to}
               onClick={() => navigate(feature.to)}
-              className="group relative overflow-hidden rounded-xl border border-[#23262A] bg-[#15171A] p-5 text-left transition-all hover:border-[#D0FF00]/30 hover:bg-[#1A1D21]"
+              className="group relative overflow-hidden rounded-xl border border-[#23262A] bg-[#15171A] p-5 text-left transition-all duration-200 hover:-translate-y-1 hover:border-[#D0FF00]/30 hover:bg-[#1A1D21] hover:shadow-lg hover:shadow-[#D0FF00]/5"
             >
-              <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-[#0B0D0E]">
+              <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-[#0B0D0E] transition-colors group-hover:bg-[#23262A]">
                 <feature.icon className="h-5 w-5" style={{ color: feature.color }} />
               </div>
               <h3 className="mb-1.5 text-base font-semibold text-white group-hover:text-[#D0FF00]">
@@ -142,19 +186,45 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Bottom status strip */}
-      <div className="mt-auto grid grid-cols-1 gap-4 sm:grid-cols-3">
-        {stats.map((stat) => (
-          <div key={stat.label} className="rounded-xl border border-[#23262A] bg-[#15171A] p-4">
-            <div className="mb-2 flex items-center gap-2 text-[#5F656D]">
-              <stat.icon className="h-4 w-4" />
-              <p className="text-xs">{stat.label}</p>
+      {/* Bottom: recent activity + status */}
+      <div className="mt-auto grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="rounded-xl border border-[#23262A] bg-[#15171A] p-4 lg:col-span-2">
+          <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-white">
+            <Activity className="h-4 w-4 text-[#2EDEDB]" />
+            最近动态
+          </h3>
+          <ul className="space-y-2">
+            {activities.map((item, index) => (
+              <li
+                key={index}
+                className="flex items-center justify-between rounded-lg bg-[#0B0D0E] px-3 py-2 text-sm"
+              >
+                <div className="flex items-center gap-2.5">
+                  <item.icon className="h-3.5 w-3.5 text-[#9CA3AF]" />
+                  <span className="text-[#E8E8E8]">{item.text}</span>
+                </div>
+                <span className="text-xs text-[#5F656D]">{item.time}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4">
+          {stats.map((stat) => (
+            <div
+              key={stat.label}
+              className="rounded-xl border border-[#23262A] bg-[#15171A] p-4 transition-colors hover:border-[#D0FF00]/20"
+            >
+              <div className="mb-2 flex items-center gap-2 text-[#5F656D]">
+                <stat.icon className="h-4 w-4" />
+                <p className="text-xs">{stat.label}</p>
+              </div>
+              <p className={cn("text-sm font-medium", stat.label === "发射台合约" ? "text-[#D0FF00]" : "text-white")}>
+                {stat.value}
+              </p>
             </div>
-            <p className={cn("text-sm font-medium", stat.label === "发射台合约" ? "text-[#D0FF00]" : "text-white")}>
-              {stat.value}
-            </p>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </div>
   );

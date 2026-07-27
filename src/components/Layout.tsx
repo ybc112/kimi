@@ -1,4 +1,5 @@
 import { Header } from "./Header";
+import { Toast } from "./Toast";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -11,6 +12,7 @@ export function Layout({ children }: LayoutProps) {
       <main className="flex-1">
         <div className="mx-auto max-w-7xl p-4 lg:p-6">{children}</div>
       </main>
+      <Toast />
     </div>
   );
 }

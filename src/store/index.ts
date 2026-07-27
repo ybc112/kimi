@@ -1,11 +1,13 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { ChatSession, LogEntry } from "@/types";
+import type { ChatSession, LogEntry, IssuedToken, ToastState } from "@/types";
 
 interface AppState {
   sessions: ChatSession[];
   currentSessionId: string | null;
   logs: LogEntry[];
+  issuedTokens: IssuedToken[];
+  toast: ToastState | null;
 
   addSession: (session: ChatSession) => void;
   updateSession: (id: string, updates: Partial<ChatSession>) => void;
@@ -15,6 +17,13 @@ interface AppState {
 
   addLog: (log: Omit<LogEntry, "id" | "timestamp">) => void;
   clearLogs: () => void;
+
+  addIssuedToken: (token: Omit<IssuedToken, "id" | "deployedAt">) => void;
+  removeIssuedToken: (id: string) => void;
+  clearIssuedTokens: () => void;
+
+  showToast: (toast: Omit<ToastState, "id">) => void;
+  hideToast: () => void;
 }
 
 const STORAGE_KEY = "flap-vault-ai-coder";
@@ -25,6 +34,8 @@ export const useAppStore = create<AppState>()(
       sessions: [],
       currentSessionId: null,
       logs: [],
+      issuedTokens: [],
+      toast: null,
 
       addSession: (session) =>
         set((state) => ({
@@ -72,6 +83,32 @@ export const useAppStore = create<AppState>()(
         })),
 
       clearLogs: () => set({ logs: [] }),
+
+      addIssuedToken: (token) =>
+        set((state) => ({
+          issuedTokens: [
+            {
+              ...token,
+              id: crypto.randomUUID(),
+              deployedAt: new Date().toLocaleString("zh-CN"),
+            },
+            ...state.issuedTokens,
+          ],
+        })),
+
+      removeIssuedToken: (id) =>
+        set((state) => ({
+          issuedTokens: state.issuedTokens.filter((t) => t.id !== id),
+        })),
+
+      clearIssuedTokens: () => set({ issuedTokens: [] }),
+
+      showToast: (toast) =>
+        set(() => ({
+          toast: { ...toast, id: crypto.randomUUID() },
+        })),
+
+      hideToast: () => set({ toast: null }),
     }),
     {
       name: STORAGE_KEY,

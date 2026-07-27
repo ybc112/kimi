@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import {
   Sparkles,
   Zap,
@@ -10,6 +10,9 @@ import {
   Copy,
   Loader2,
   ExternalLink,
+  RefreshCw,
+  Check,
+  Dices,
 } from "lucide-react";
 import { ethers } from "ethers";
 import { useAppStore } from "@/store";
@@ -64,13 +67,36 @@ const SELL_TAX_FIELDS: Array<{ key: StringFormKey; label: string }> = [
   { key: "sellDividendBp", label: "分红" },
 ];
 
+const GRADIENTS = [
+  "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+  "linear-gradient(135deg, #ff9a9e 0%, #fecfef 99%, #fecfef 100%)",
+  "linear-gradient(120deg, #84fab0 0%, #8fd3f4 100%)",
+  "linear-gradient(120deg, #fccb90 0%, #d57eeb 100%)",
+  "linear-gradient(120deg, #e0c3fc 0%, #8ec5fc 100%)",
+  "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)",
+  "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
+  "linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)",
+  "linear-gradient(135deg, #fa709a 0%, #fee140 100%)",
+  "linear-gradient(135deg, #30cfd0 0%, #330867 100%)",
+];
+
+function randomAvatar() {
+  const idx = Math.floor(Math.random() * GRADIENTS.length);
+  return {
+    background: GRADIENTS[idx],
+    pattern: `radial-gradient(circle at ${20 + Math.random() * 60}% ${20 + Math.random() * 60}%, rgba(255,255,255,0.25) 0%, transparent 35%)`,
+  };
+}
+
 export default function MemeLaunch() {
-  const { addLog } = useAppStore();
+  const { addLog, showToast } = useAppStore();
   const wallet = useWallet();
 
   const [concept, setConcept] = useState("");
   const [form, setForm] = useState<CreateTokenFormValues>(DEFAULT_FORM);
   const [imageUrl, setImageUrl] = useState<string>("");
+  const [avatar, setAvatar] = useState(randomAvatar);
+  const [generatedDescription, setGeneratedDescription] = useState("");
 
   const [generating, setGenerating] = useState(false);
   const [txStatus, setTxStatus] = useState<"idle" | "pending" | "success" | "error">("idle");
@@ -83,7 +109,7 @@ export default function MemeLaunch() {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const handleGenerate = async () => {
+  const handleGenerate = useCallback(async () => {
     if (!concept.trim() || generating) return;
     setGenerating(true);
     setErrorMessage("");
@@ -115,11 +141,14 @@ export default function MemeLaunch() {
           name: String(parsed.name),
           symbol: String(parsed.symbol).toUpperCase(),
         }));
+        setGeneratedDescription(String(parsed.description));
+        setAvatar(randomAvatar());
         addLog({
           type: "success",
           message: "Meme 文案生成成功",
           detail: String(parsed.description),
         });
+        showToast({ type: "success", message: "Meme 文案生成成功" });
       } else {
         throw new Error("AI 返回格式不完整");
       }
@@ -127,10 +156,11 @@ export default function MemeLaunch() {
       const detail = error instanceof Error ? error.message : String(error);
       setErrorMessage(`文案生成失败：${detail}`);
       addLog({ type: "error", message: "Meme 文案生成失败", detail });
+      showToast({ type: "error", message: "文案生成失败，请重试" });
     } finally {
       setGenerating(false);
     }
-  };
+  }, [concept, generating, addLog, showToast]);
 
   const handleLaunch = async () => {
     if (!wallet.isConnected || !wallet.signer) {
@@ -173,11 +203,13 @@ export default function MemeLaunch() {
       }
       setTxStatus("success");
       addLog({ type: "success", message: "代币创建成功", detail: createdToken });
+      showToast({ type: "success", message: "代币发射成功" });
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       setErrorMessage(detail);
       setTxStatus("error");
       addLog({ type: "error", message: "代币创建失败", detail });
+      showToast({ type: "error", message: "代币发射失败" });
     }
   };
 
@@ -185,6 +217,7 @@ export default function MemeLaunch() {
     if (!tokenAddress) return;
     await navigator.clipboard.writeText(tokenAddress);
     setCopied(true);
+    showToast({ type: "success", message: "代币地址已复制" });
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -200,8 +233,7 @@ export default function MemeLaunch() {
     Number(form.sellLiquidityBp || 0) +
     Number(form.sellDividendBp || 0);
 
-  const canLaunch =
-    form.name.trim() && form.symbol.trim() && Number(form.totalSupply || 0) > 0;
+  const canLaunch = form.name.trim() && form.symbol.trim() && Number(form.totalSupply || 0) > 0;
 
   return (
     <div className="flex min-h-[calc(100vh-7rem)] flex-col gap-4 lg:h-[calc(100vh-3rem)]">
@@ -260,42 +292,70 @@ export default function MemeLaunch() {
               rows={4}
               className="w-full resize-none rounded-lg border border-[#303236] bg-[#0B0D0E] p-3 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
             />
-            <button
-              onClick={handleGenerate}
-              disabled={!concept.trim() || generating}
-              className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-[#D0FF00] py-2.5 text-sm font-semibold text-black transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {generating ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  生成中
-                </>
-              ) : (
-                <>
-                  <Zap className="h-4 w-4" />
-                  生成文案
-                </>
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={handleGenerate}
+                disabled={!concept.trim() || generating}
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#D0FF00] py-2.5 text-sm font-semibold text-black transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {generating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    生成中
+                  </>
+                ) : (
+                  <>
+                    <Zap className="h-4 w-4" />
+                    生成文案
+                  </>
+                )}
+              </button>
+              {form.name && (
+                <button
+                  onClick={handleGenerate}
+                  disabled={!concept.trim() || generating}
+                  title="重新生成"
+                  className="flex items-center justify-center gap-2 rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 text-sm text-[#9CA3AF] transition-colors hover:border-[#D0FF00]/30 hover:text-white disabled:opacity-40"
+                >
+                  <RefreshCw className={cn("h-4 w-4", generating && "animate-spin")} />
+                </button>
               )}
-            </button>
+            </div>
+
+            {generatedDescription && (
+              <div className="mt-4 rounded-lg border border-[#D0FF00]/20 bg-[#D0FF00]/5 p-3">
+                <p className="text-xs text-[#84888C]">AI 生成简介</p>
+                <p className="mt-1 text-sm text-[#E8E8E8]">{generatedDescription}</p>
+              </div>
+            )}
           </div>
 
           <div className="rounded-xl border border-[#23262A] bg-[#15171A] p-5">
-            <h3 className="mb-4 flex items-center gap-2 text-sm font-medium text-white">
-              <ImageIcon className="h-4 w-4 text-[#2EDEDB]" />
-              代币头像
-            </h3>
-            <div className="flex aspect-square flex-col items-center justify-center rounded-lg border border-dashed border-[#303236] bg-[#0B0D0E] p-4 text-center">
-              {imageUrl ? (
-                <img
-                  src={imageUrl}
-                  alt="Meme avatar"
-                  className="h-full w-full rounded-lg object-cover"
-                />
-              ) : (
-                <>
-                  <ImageIcon className="mb-2 h-10 w-10 text-[#303236]" />
-                  <p className="text-xs text-[#5F656D]">头像将由后续接入的生图模型生成</p>
-                </>
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="flex items-center gap-2 text-sm font-medium text-white">
+                <ImageIcon className="h-4 w-4 text-[#2EDEDB]" />
+                代币头像
+              </h3>
+              <button
+                onClick={() => setAvatar(randomAvatar())}
+                className="flex items-center gap-1 rounded-lg border border-[#303236] bg-[#0B0D0E] px-2 py-1 text-xs text-[#9CA3AF] transition-colors hover:border-[#D0FF00]/30 hover:text-white"
+              >
+                <Dices className="h-3 w-3" />
+                换一换
+              </button>
+            </div>
+            <div
+              className="flex aspect-square flex-col items-center justify-center overflow-hidden rounded-lg border border-dashed border-[#303236] bg-[#0B0D0E] p-4 text-center"
+              style={{
+                backgroundImage: `${avatar.pattern}, ${imageUrl ? `url(${imageUrl})` : avatar.background}`,
+                backgroundSize: "cover",
+                backgroundPosition: "center",
+              }}
+            >
+              {!imageUrl && (
+                <div className="rounded-full border-2 border-white/30 bg-black/20 px-4 py-2 text-xl font-bold text-white backdrop-blur-sm">
+                  {form.symbol?.slice(0, 2) || "?"}
+                </div>
               )}
             </div>
             <input

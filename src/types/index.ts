@@ -30,3 +30,25 @@ export interface ChatRequest {
 export interface ChatResponse {
   choices: Array<{ message: { content: string } }>;
 }
+
+export type TokenStatus = "active" | "pending" | "verified";
+
+export interface IssuedToken {
+  id: string;
+  name: string;
+  symbol: string;
+  address: string;
+  network: string;
+  deployedAt: string;
+  status: TokenStatus;
+  txHash?: string;
+  type?: "vault" | "token" | "meme";
+  source?: string;
+}
+
+export interface ToastState {
+  id: string;
+  type: "success" | "error" | "info";
+  message: string;
+  duration?: number;
+}

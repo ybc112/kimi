@@ -12,6 +12,14 @@ import {
   Sparkles,
   AlertCircle,
   Rocket,
+  RefreshCw,
+  Save,
+  History,
+  Trash2,
+  Flame,
+  ShoppingCart,
+  Gift,
+  Droplets,
 } from "lucide-react";
 import { useAppStore } from "@/store";
 import { DEFAULT_MODEL, sendChatMessage } from "@/lib/kimi";
@@ -36,8 +44,24 @@ const TEMPLATE_CHECKS = [
 
 const EXAMPLE_PROMPT = `例如：帮我写一个燃烧池税金库，金库合约将 0.2 BNB 自动回购销毁。`;
 
+const QUICK_TAGS = [
+  { label: "燃烧税", icon: Flame, prompt: "增加燃烧税机制，每笔交易自动销毁一部分代币。" },
+  { label: "回购", icon: ShoppingCart, prompt: "增加回购机制，金库收到税收后自动回购代币并销毁。" },
+  { label: "分红", icon: Gift, prompt: "增加分红机制，持币者按份额获得 USDT 分红。" },
+  { label: "LP 流动性", icon: Droplets, prompt: "增加 LP 流动性机制，税收自动添加流动性到 PancakeSwap。" },
+];
+
 export default function Chat() {
-  const { addLog } = useAppStore();
+  const {
+    sessions,
+    currentSessionId,
+    addSession,
+    updateSession,
+    deleteSession,
+    setCurrentSession,
+    addLog,
+    showToast,
+  } = useAppStore();
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState<"generate" | "params" | "example">("generate");
@@ -58,6 +82,20 @@ export default function Chat() {
   });
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const currentSession = sessions.find((s) => s.id === currentSessionId) || null;
+
+  useEffect(() => {
+    if (currentSession) {
+      const assistantMsg = [...currentSession.messages].reverse().find((m) => m.role === "assistant");
+      const userMsg = currentSession.messages.find((m) => m.role === "user");
+      setGeneratedCode(assistantMsg?.content || "");
+      setPrompt(userMsg?.content || "");
+    } else {
+      setGeneratedCode("");
+      setPrompt("");
+    }
+  }, [currentSessionId]);
 
   const adjustTextareaHeight = useCallback(() => {
     const el = textareaRef.current;
@@ -101,11 +139,11 @@ export default function Chat() {
     return match ? match[1].trim() : text.trim();
   };
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (regenerate = false) => {
     if (!prompt.trim() || loading) return;
 
     setLoading(true);
-    addLog({ type: "info", message: "正在请求 Kimi 生成合约" });
+    addLog({ type: "info", message: regenerate ? "正在重新生成合约" : "正在请求 Kimi 生成合约" });
 
     try {
       const userPrompt = buildUserPrompt();
@@ -122,10 +160,35 @@ export default function Chat() {
       const code = extractCode(content);
       setGeneratedCode(code);
       localStorage.setItem("flap-generated-code", code);
+
+      if (!currentSessionId) {
+        addSession({
+          id: crypto.randomUUID(),
+          title: prompt.slice(0, 20) || "新对话",
+          messages: [
+            { role: "user", content: prompt, timestamp: Date.now() },
+            { role: "assistant", content: code, timestamp: Date.now() },
+          ],
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        });
+      } else {
+        updateSession(currentSessionId, {
+          messages: [
+            ...currentSession!.messages,
+            { role: "user", content: prompt, timestamp: Date.now() },
+            { role: "assistant", content: code, timestamp: Date.now() },
+          ],
+          updatedAt: Date.now(),
+        });
+      }
+
       addLog({ type: "success", message: "合约代码生成成功" });
+      showToast({ type: "success", message: regenerate ? "已重新生成" : "合约生成成功" });
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       addLog({ type: "error", message: "Kimi 请求失败", detail });
+      showToast({ type: "error", message: "生成失败" });
     } finally {
       setLoading(false);
     }
@@ -135,6 +198,7 @@ export default function Chat() {
     if (!generatedCode) return;
     await navigator.clipboard.writeText(generatedCode);
     setCopied(true);
+    showToast({ type: "success", message: "代码已复制" });
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -149,6 +213,13 @@ export default function Chat() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    showToast({ type: "success", message: "文件已下载" });
+  };
+
+  const handleSaveLocal = () => {
+    if (!generatedCode) return;
+    localStorage.setItem("flap-generated-code", generatedCode);
+    showToast({ type: "success", message: "已保存到本地" });
   };
 
   const handleSelectAll = () => {
@@ -161,6 +232,34 @@ export default function Chat() {
     selection?.addRange(range);
   };
 
+  const handleNewSession = () => {
+    const id = crypto.randomUUID();
+    addSession({
+      id,
+      title: "新对话",
+      messages: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    setPrompt("");
+    setGeneratedCode("");
+    localStorage.removeItem("flap-generated-code");
+    setParams({
+      projectName: "",
+      contractName: "",
+      vaultType: "mint-treasury",
+      treasuryReceiver: "",
+      mintPrice: "0.2",
+      mintAmount: "100000",
+      treasurySplit: "80",
+      secondWallet: "",
+    });
+  };
+
+  const applyTag = (tagPrompt: string) => {
+    setPrompt((prev) => (prev ? `${prev}\n${tagPrompt}` : tagPrompt));
+  };
+
   const selectedType = vaultTypes.find((v) => v.value === params.vaultType);
 
   return (
@@ -170,30 +269,66 @@ export default function Chat() {
           <h2 className="text-xl font-bold text-white">金库生成</h2>
           <p className="text-xs text-[#84888C]">基于 Kimi + Flap Tax Vault V2 规范生成合约代码</p>
         </div>
-        <button
-          onClick={() => {
-            setPrompt("");
-            setGeneratedCode("");
-            localStorage.removeItem("flap-generated-code");
-            setParams({
-              projectName: "",
-              contractName: "",
-              vaultType: "mint-treasury",
-              treasuryReceiver: "",
-              mintPrice: "0.2",
-              mintAmount: "100000",
-              treasurySplit: "80",
-              secondWallet: "",
-            });
-          }}
-          className="flex items-center justify-center gap-2 rounded-lg border border-[#23262A] bg-[#15171A] px-4 py-2 text-sm text-[#9CA3AF] transition-colors hover:border-[#D0FF00]/30 hover:text-white sm:justify-start"
-        >
-          <Plus className="h-4 w-4" />
-          新建生成
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => handleGenerate(true)}
+            disabled={!generatedCode || loading}
+            className="flex items-center justify-center gap-2 rounded-lg border border-[#23262A] bg-[#15171A] px-4 py-2 text-sm text-[#9CA3AF] transition-colors hover:border-[#D0FF00]/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <RefreshCw className="h-4 w-4" />
+            重新生成
+          </button>
+          <button
+            onClick={handleNewSession}
+            className="flex items-center justify-center gap-2 rounded-lg border border-[#23262A] bg-[#15171A] px-4 py-2 text-sm text-[#9CA3AF] transition-colors hover:border-[#D0FF00]/30 hover:text-white"
+          >
+            <Plus className="h-4 w-4" />
+            新建生成
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-1 flex-col gap-4 lg:flex-row lg:overflow-hidden">
+        {/* History sidebar */}
+        <div className="hidden w-full flex-col rounded-xl border border-[#23262A] bg-[#15171A] lg:flex lg:w-[240px]">
+          <div className="flex items-center justify-between border-b border-[#23262A] px-4 py-3">
+            <h3 className="flex items-center gap-2 text-sm font-medium text-white">
+              <History className="h-4 w-4 text-[#9CA3AF]" />
+              历史会话
+            </h3>
+          </div>
+          <div className="flex-1 overflow-auto p-2">
+            {sessions.length === 0 ? (
+              <p className="px-2 py-4 text-center text-xs text-[#5F656D]">暂无历史会话</p>
+            ) : (
+              <ul className="space-y-1">
+                {sessions.map((session) => (
+                  <li key={session.id}>
+                    <button
+                      onClick={() => setCurrentSession(session.id)}
+                      className={cn(
+                        "group flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs transition-colors",
+                        currentSessionId === session.id
+                          ? "bg-[#D0FF00]/10 text-[#D0FF00]"
+                          : "text-[#9CA3AF] hover:bg-[#23262A] hover:text-white"
+                      )}
+                    >
+                      <span className="truncate pr-2">{session.title}</span>
+                      <Trash2
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteSession(session.id);
+                        }}
+                        className="h-3 w-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+                      />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+
         {/* Left: Parameters */}
         <div className="flex w-full flex-col rounded-xl border border-[#23262A] bg-[#15171A] lg:w-[420px]">
           <div className="flex items-center justify-between border-b border-[#23262A] px-5 py-4">
@@ -235,7 +370,22 @@ export default function Chat() {
                     rows={4}
                     className="w-full resize-none rounded-lg border border-[#303236] bg-[#0B0D0E] p-3 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
                   />
-                  <p className="mt-1.5 text-xs text-[#5F656D]">
+
+                  {/* Quick tags */}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {QUICK_TAGS.map((tag) => (
+                      <button
+                        key={tag.label}
+                        onClick={() => applyTag(tag.prompt)}
+                        className="flex items-center gap-1.5 rounded-full border border-[#303236] bg-[#0B0D0E] px-2.5 py-1 text-xs text-[#9CA3AF] transition-colors hover:border-[#D0FF00]/30 hover:text-white"
+                      >
+                        <tag.icon className="h-3 w-3" />
+                        {tag.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <p className="mt-2 text-xs text-[#5F656D]">
                     输入需求后会自动识别：金库类型、接收地址、Mint 价格、每次份额、分成比例、提现/救援/Guardian，并立即生成合规代码。
                   </p>
                 </div>
@@ -339,7 +489,7 @@ export default function Chat() {
                 </div>
 
                 <button
-                  onClick={handleGenerate}
+                  onClick={() => handleGenerate(false)}
                   disabled={!prompt.trim() || loading}
                   className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#D0FF00] py-2.5 text-sm font-semibold text-black transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
                 >
@@ -394,35 +544,43 @@ export default function Chat() {
         <div className="flex flex-col rounded-xl border border-[#23262A] bg-[#15171A] lg:flex-1 lg:min-h-0">
           <div className="flex flex-col gap-3 border-b border-[#23262A] px-4 py-4 sm:flex-row sm:items-center sm:justify-between lg:px-5">
             <h3 className="font-semibold text-white">生成代码</h3>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={handleCopy}
                 disabled={!generatedCode}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-1.5 text-xs text-[#9CA3AF] transition-colors hover:border-[#D0FF00]/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 sm:flex-initial"
+                className="flex items-center justify-center gap-1.5 rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-1.5 text-xs text-[#9CA3AF] transition-colors hover:border-[#D0FF00]/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                Copy
+                复制
               </button>
               <button
                 onClick={handleDownload}
                 disabled={!generatedCode}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-1.5 text-xs text-[#9CA3AF] transition-colors hover:border-[#D0FF00]/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 sm:flex-initial"
+                className="flex items-center justify-center gap-1.5 rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-1.5 text-xs text-[#9CA3AF] transition-colors hover:border-[#D0FF00]/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Download className="h-3.5 w-3.5" />
-                Download
+                下载 .sol
+              </button>
+              <button
+                onClick={handleSaveLocal}
+                disabled={!generatedCode}
+                className="flex items-center justify-center gap-1.5 rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-1.5 text-xs text-[#9CA3AF] transition-colors hover:border-[#D0FF00]/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Save className="h-3.5 w-3.5" />
+                保存到本地
               </button>
               <button
                 onClick={handleSelectAll}
                 disabled={!generatedCode}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-1.5 text-xs text-[#9CA3AF] transition-colors hover:border-[#D0FF00]/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 sm:flex-initial"
+                className="flex items-center justify-center gap-1.5 rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-1.5 text-xs text-[#9CA3AF] transition-colors hover:border-[#D0FF00]/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Layers className="h-3.5 w-3.5" />
-                Select
+                全选
               </button>
               <button
                 onClick={() => navigate("/deploy")}
                 disabled={!generatedCode}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-[#D0FF00]/30 bg-[#D0FF00]/10 px-3 py-1.5 text-xs font-medium text-[#D0FF00] transition-colors hover:bg-[#D0FF00]/20 disabled:cursor-not-allowed disabled:opacity-40 sm:flex-initial"
+                className="flex items-center justify-center gap-1.5 rounded-lg border border-[#D0FF00]/30 bg-[#D0FF00]/10 px-3 py-1.5 text-xs font-medium text-[#D0FF00] transition-colors hover:bg-[#D0FF00]/20 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Rocket className="h-3.5 w-3.5" />
                 部署
