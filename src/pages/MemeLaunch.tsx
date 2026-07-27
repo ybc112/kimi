@@ -132,6 +132,7 @@ export default function MemeLaunch() {
   const [txHash, setTxHash] = useState<string>("");
   const [tokenAddress, setTokenAddress] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string>("");
+  const [imageError, setImageError] = useState<string>("");
   const [copied, setCopied] = useState(false);
   const [createFee, setCreateFee] = useState<string>(CREATE_FEE_WEI);
 
@@ -178,11 +179,11 @@ export default function MemeLaunch() {
   const handleGenerateImage = async () => {
     if (!form.name.trim() || generatingImage) return;
     setGeneratingImage(true);
-    setErrorMessage("");
+    setImageError("");
     addLog({ type: "info", message: "正在生成 Meme 代币头像" });
 
     try {
-      const prompt = `A cute and iconic meme cryptocurrency token mascot for "${form.name}" (${form.symbol}). Cartoon style, vibrant colors, clean background, suitable as a token logo. Theme: ${concept || "meme culture"}.`;
+      const prompt = `A cute iconic meme crypto token mascot for "${form.name}", cartoon style, vibrant colors, clean background, token logo.`;
       const url = await generateImage({ prompt, size: "1024x1024" });
       setImageUrl(url);
       saveMeme({ concept, form, description: generatedDescription, avatar, imageUrl: url });
@@ -190,7 +191,7 @@ export default function MemeLaunch() {
       showToast({ type: "success", message: "头像生成成功" });
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      setErrorMessage(`头像生成失败：${detail}`);
+      setImageError(detail);
       addLog({ type: "error", message: "Meme 头像生成失败", detail });
       showToast({ type: "error", message: "头像生成失败" });
     } finally {
@@ -496,11 +497,17 @@ export default function MemeLaunch() {
               value={imageUrl}
               onChange={(e) => {
                 setImageUrl(e.target.value);
+                setImageError("");
                 saveMeme({ concept, form, description: generatedDescription, avatar, imageUrl: e.target.value });
               }}
               placeholder="AI 生成的头像链接会显示在这里，也支持粘贴自定义图片链接"
               className="kimi-input mt-3 text-xs"
             />
+            {imageError && (
+              <div className="mt-2 rounded-lg border border-[#FF6B6B]/30 bg-[#FF6B6B]/10 px-3 py-2 text-xs text-[#FF6B6B]">
+                {imageError}
+              </div>
+            )}
           </div>
         </div>
 

@@ -44,6 +44,8 @@ serve(async (req) => {
       });
     }
 
+    console.log("[generate-image] upstream request:", { model, prompt, size, n });
+
     const response = await fetch(`${baseUrl}/v1/images/generations`, {
       method: "POST",
       headers: {
@@ -53,11 +55,20 @@ serve(async (req) => {
       body: JSON.stringify({ model, prompt, n, size }),
     });
 
-    const data = await response.json();
+    const rawText = await response.text();
+    let data: Record<string, unknown> = {};
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      data = { raw: rawText };
+    }
+
+    console.log("[generate-image] upstream response:", { status: response.status, data });
 
     if (!response.ok) {
-      return new Response(JSON.stringify({ error: data?.error?.message || "Image API error" }), {
-        status: response.status,
+      const message = data?.error?.message || data?.raw || `Upstream returned ${response.status}`;
+      return new Response(JSON.stringify({ error: message, upstreamStatus: response.status, upstreamData: data }), {
+        status: 502,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
