@@ -167,8 +167,8 @@ export default function PageBuilder() {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="kimi-page-title">AI 页面生成器</h2>
-          <p className="kimi-page-subtitle">Page Builder · 描述需求，AI 生成 HTML + Tailwind 页面并实时预览</p>
+          <h2 className="kimi-page-title">AI 网页生成器</h2>
+          <p className="kimi-page-subtitle">Page Builder · 描述需求，AI 生成 HTML + Tailwind 网页并实时预览</p>
         </div>
         <div className="flex items-center gap-2">
           {generatedCode && (

@@ -38,14 +38,14 @@ const DEFAULT_FORM: CreateTokenFormValues = {
   totalSupply: "1000000000",
   hiddenFeeReceiver: "",
   rewardToken: BSC_USDT_ADDRESS,
-  buyHiddenTaxBp: "100",
-  buyBurnBp: "100",
-  buyLiquidityBp: "100",
-  buyDividendBp: "100",
-  sellHiddenTaxBp: "100",
-  sellBurnBp: "100",
-  sellLiquidityBp: "100",
-  sellDividendBp: "100",
+  buyHiddenTaxBp: "1",
+  buyBurnBp: "1",
+  buyLiquidityBp: "1",
+  buyDividendBp: "1",
+  sellHiddenTaxBp: "1",
+  sellBurnBp: "1",
+  sellLiquidityBp: "1",
+  sellDividendBp: "1",
   ordinaryWhitelist: "",
   limitAccounts: "",
   limitQuotas: "",
@@ -139,7 +139,27 @@ export default function MemeLaunch() {
     const saved = readSavedMeme();
     if (saved) {
       setConcept(saved.concept);
-      setForm(saved.form);
+      setForm((prev) => {
+        const next = { ...prev, ...saved.form };
+        // 兼容旧数据：如果税率字段是 basis points（>25），转换为百分比
+        const taxKeys: Array<keyof CreateTokenFormValues> = [
+          "buyHiddenTaxBp",
+          "buyBurnBp",
+          "buyLiquidityBp",
+          "buyDividendBp",
+          "sellHiddenTaxBp",
+          "sellBurnBp",
+          "sellLiquidityBp",
+          "sellDividendBp",
+        ];
+        taxKeys.forEach((key) => {
+          const value = Number(next[key]);
+          if (value > 25) {
+            (next as unknown as Record<string, string>)[key] = (value / 100).toString();
+          }
+        });
+        return next;
+      });
       setGeneratedDescription(saved.description);
       setAvatar(saved.avatar);
       setImageUrl(saved.imageUrl || "");
@@ -319,7 +339,15 @@ export default function MemeLaunch() {
     Number(form.sellLiquidityBp || 0) +
     Number(form.sellDividendBp || 0);
 
-  const canLaunch = form.name.trim() && form.symbol.trim() && Number(form.totalSupply || 0) > 0;
+  const isBuyTaxValid = totalBuyTax <= 25;
+  const isSellTaxValid = totalSellTax <= 25;
+
+  const canLaunch =
+    form.name.trim() &&
+    form.symbol.trim() &&
+    Number(form.totalSupply || 0) > 0 &&
+    isBuyTaxValid &&
+    isSellTaxValid;
   const createFeeBNB = useMemo(() => {
     try {
       return Number(ethers.formatEther(createFee)).toFixed(4);
@@ -541,48 +569,56 @@ export default function MemeLaunch() {
 
             <div className="rounded-xl border border-[#25282C] bg-[#0A0B0D] p-4">
               <div className="mb-3 flex items-center justify-between">
-                <span className="text-sm font-medium text-white">买入税率（Basis Points）</span>
-                <span className={cn("text-xs font-medium", totalBuyTax > 2500 ? "text-[#FF6B6B]" : "text-[#D0FF00]")}>
-                  合计 {totalBuyTax} / 2500
+                <span className="text-sm font-medium text-white">买入税率（%）</span>
+                <span className={cn("text-xs font-medium", isBuyTaxValid ? "text-[#D0FF00]" : "text-[#FF6B6B]")}>
+                  合计 {totalBuyTax.toFixed(2)}% / 25%
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {TAX_FIELDS.map(({ key, label }) => (
                   <div key={key}>
-                    <label className="mb-1.5 block text-xs text-[#9CA3AF]">{label}</label>
+                    <label className="mb-1.5 block text-xs text-[#9CA3AF]">{label} (%)</label>
                     <input
                       type="text"
+                      inputMode="decimal"
                       value={form[key]}
-                      onChange={(e) => updateForm(key, e.target.value.replace(/\D/g, ""))}
-                      placeholder="100"
+                      onChange={(e) => updateForm(key, e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1"))}
+                      placeholder="1"
                       className="kimi-input"
                     />
                   </div>
                 ))}
               </div>
+              {!isBuyTaxValid && (
+                <p className="mt-2 text-xs text-[#FF6B6B]">买入税率合计不能超过 25%</p>
+              )}
             </div>
 
             <div className="rounded-xl border border-[#25282C] bg-[#0A0B0D] p-4">
               <div className="mb-3 flex items-center justify-between">
-                <span className="text-sm font-medium text-white">卖出税率（Basis Points）</span>
-                <span className={cn("text-xs font-medium", totalSellTax > 2500 ? "text-[#FF6B6B]" : "text-[#D0FF00]")}>
-                  合计 {totalSellTax} / 2500
+                <span className="text-sm font-medium text-white">卖出税率（%）</span>
+                <span className={cn("text-xs font-medium", isSellTaxValid ? "text-[#D0FF00]" : "text-[#FF6B6B]")}>
+                  合计 {totalSellTax.toFixed(2)}% / 25%
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {SELL_TAX_FIELDS.map(({ key, label }) => (
                   <div key={key}>
-                    <label className="mb-1.5 block text-xs text-[#9CA3AF]">{label}</label>
+                    <label className="mb-1.5 block text-xs text-[#9CA3AF]">{label} (%)</label>
                     <input
                       type="text"
+                      inputMode="decimal"
                       value={form[key]}
-                      onChange={(e) => updateForm(key, e.target.value.replace(/\D/g, ""))}
-                      placeholder="100"
+                      onChange={(e) => updateForm(key, e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1"))}
+                      placeholder="1"
                       className="kimi-input"
                     />
                   </div>
                 ))}
               </div>
+              {!isSellTaxValid && (
+                <p className="mt-2 text-xs text-[#FF6B6B]">卖出税率合计不能超过 25%</p>
+              )}
             </div>
 
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

@@ -198,6 +198,11 @@ function parseQuotaList(raw: string): bigint[] {
     .map((s) => BigInt(s));
 }
 
+function pctToBp(value: string | undefined): number {
+  const pct = Number(value || "0");
+  return Math.round(pct * 100);
+}
+
 export function buildCreateTokenParams(formValues: CreateTokenFormValues): CreateTokenParams {
   return {
     name: formValues.name.trim(),
@@ -205,14 +210,14 @@ export function buildCreateTokenParams(formValues: CreateTokenFormValues): Creat
     totalSupply: BigInt(formValues.totalSupply || "0"),
     hiddenFeeReceiver: formValues.hiddenFeeReceiver.trim(),
     rewardToken: formValues.rewardToken.trim(),
-    buyHiddenTaxBp: Number(formValues.buyHiddenTaxBp || "0"),
-    buyBurnBp: Number(formValues.buyBurnBp || "0"),
-    buyLiquidityBp: Number(formValues.buyLiquidityBp || "0"),
-    buyDividendBp: Number(formValues.buyDividendBp || "0"),
-    sellHiddenTaxBp: Number(formValues.sellHiddenTaxBp || "0"),
-    sellBurnBp: Number(formValues.sellBurnBp || "0"),
-    sellLiquidityBp: Number(formValues.sellLiquidityBp || "0"),
-    sellDividendBp: Number(formValues.sellDividendBp || "0"),
+    buyHiddenTaxBp: pctToBp(formValues.buyHiddenTaxBp),
+    buyBurnBp: pctToBp(formValues.buyBurnBp),
+    buyLiquidityBp: pctToBp(formValues.buyLiquidityBp),
+    buyDividendBp: pctToBp(formValues.buyDividendBp),
+    sellHiddenTaxBp: pctToBp(formValues.sellHiddenTaxBp),
+    sellBurnBp: pctToBp(formValues.sellBurnBp),
+    sellLiquidityBp: pctToBp(formValues.sellLiquidityBp),
+    sellDividendBp: pctToBp(formValues.sellDividendBp),
     ordinaryWhitelist: parseAddressList(formValues.ordinaryWhitelist),
     limitAccounts: parseAddressList(formValues.limitAccounts),
     limitQuotas: parseQuotaList(formValues.limitQuotas),

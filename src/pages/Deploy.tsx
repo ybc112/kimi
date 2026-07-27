@@ -51,7 +51,7 @@ const DEPLOY_MODES = [
 
 type DeployMode = (typeof DEPLOY_MODES)[number]["value"];
 
-const BURN_AMOUNT = "100,000";
+const BURN_AMOUNT = "20,000";
 
 export default function Deploy() {
   const { addLog, showToast } = useAppStore();

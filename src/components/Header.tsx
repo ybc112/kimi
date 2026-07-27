@@ -25,7 +25,7 @@ import { cn } from "@/lib/utils";
 const mainNavItems = [
   { to: "/", icon: LayoutDashboard, label: "首页" },
   { to: "/vault", icon: Box, label: "金库生成" },
-  { to: "/page-builder", icon: Wand2, label: "AI 页面" },
+  { to: "/page-builder", icon: Wand2, label: "AI 网页" },
   { to: "/deploy", icon: Rocket, label: "合约部署" },
   { to: "/flap-launch", icon: CircleDollarSign, label: "Flap 发币" },
   { to: "/issued-tokens", icon: List, label: "已发代币" },
