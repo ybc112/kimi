@@ -81,7 +81,7 @@ export default function Chat() {
   const [generatedCode, setGeneratedCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const [params, setParams] = useState({
     projectName: "",
@@ -281,9 +281,9 @@ export default function Chat() {
   const selectedType = vaultTypes.find((v) => v.value === params.vaultType);
 
   return (
-    <div className="flex min-h-[calc(100vh-7rem)] flex-col gap-4 lg:h-[calc(100vh-3rem)]">
+    <div className="flex h-[calc(100vh-4rem)] flex-col gap-4 p-4 lg:h-[calc(100vh-3rem)]">
       {/* Page header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between shrink-0">
         <div>
           <h2 className="kimi-page-title">金库生成</h2>
           <p className="kimi-page-subtitle">Vault AI · 基于 Kimi + Flap Tax Vault V2 规范生成合约代码</p>
@@ -304,7 +304,7 @@ export default function Chat() {
         </div>
       </div>
 
-      <div className="flex flex-1 flex-col gap-4 lg:flex-row lg:overflow-hidden">
+      <div className="flex flex-1 flex-col gap-4 min-h-0 lg:flex-row lg:overflow-hidden">
         {/* History sidebar - collapsible */}
         <div
           className={cn(
@@ -362,55 +362,55 @@ export default function Chat() {
         </div>
 
         {/* Left: Parameters */}
-        <div className="flex w-full flex-col rounded-2xl border border-[#25282C] bg-[#111215] lg:w-[480px]">
-          <div className="flex items-center justify-between border-b border-[#25282C] px-5 py-4">
+        <div className="flex w-full flex-col rounded-2xl border border-[#25282C] bg-[#111215] lg:w-[420px] xl:w-[460px] 2xl:w-[520px]">
+          <div className="flex items-center justify-between border-b border-[#25282C] px-4 py-3">
             <h3 className="font-semibold text-white">生成参数</h3>
             <span className="rounded-full bg-[#D0FF00]/10 px-2.5 py-0.5 text-xs text-[#D0FF00]">可配置 Remix</span>
           </div>
 
           <div className="flex border-b border-[#25282C] px-2">
             {[
-              { key: "generate", label: "生成说明" },
-              { key: "params", label: "参数说明" },
-              { key: "example", label: "示例说明" },
+              { key: "generate", label: "生成" },
+              { key: "params", label: "说明" },
+              { key: "example", label: "示例" },
             ].map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key as typeof activeTab)}
                 className={cn(
-                  "relative flex-1 px-3 py-3 text-sm font-medium transition-colors",
+                  "relative flex-1 px-2 py-2.5 text-sm font-medium transition-colors",
                   activeTab === tab.key ? "text-[#D0FF00]" : "text-[#6B7280] hover:text-[#9CA3AF]"
                 )}
               >
                 {tab.label}
                 {activeTab === tab.key && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-t-full bg-[#D0FF00]" />
+                  <span className="absolute bottom-0 left-1/2 h-0.5 w-8 -translate-x-1/2 rounded-t-full bg-[#D0FF00]" />
                 )}
               </button>
             ))}
           </div>
 
-          <div className="p-5 lg:flex-1 lg:overflow-auto">
+          <div className="p-4 lg:flex-1 lg:overflow-auto">
             {activeTab === "generate" && (
-              <div className="space-y-5">
+              <div className="space-y-4">
                 <div>
-                  <label className="mb-2 block text-xs font-medium text-[#9CA3AF]">需求描述</label>
+                  <label className="mb-1.5 block text-xs font-medium text-[#9CA3AF]">需求描述</label>
                   <textarea
                     ref={textareaRef}
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
                     placeholder={EXAMPLE_PROMPT}
-                    rows={4}
-                    className="kimi-input min-h-[100px] resize-none"
+                    rows={3}
+                    className="kimi-input min-h-[80px] resize-none"
                   />
 
                   {/* Quick tags */}
-                  <div className="mt-3 grid grid-cols-2 gap-2">
+                  <div className="mt-2 grid grid-cols-4 gap-2">
                     {QUICK_TAGS.map((tag) => (
                       <button
                         key={tag.label}
                         onClick={() => applyTag(tag.prompt)}
-                        className="flex items-center gap-1.5 rounded-xl border border-[#25282C] bg-[#0A0B0D] px-2.5 py-2 text-xs text-[#9CA3AF] transition-all hover:border-[#D0FF00]/30 hover:text-white"
+                        className="flex flex-col items-center gap-1 rounded-lg border border-[#25282C] bg-[#0A0B0D] px-1 py-2 text-[10px] text-[#9CA3AF] transition-all hover:border-[#D0FF00]/30 hover:text-white"
                       >
                         <tag.icon className="h-3 w-3" />
                         {tag.label}
@@ -418,12 +418,12 @@ export default function Chat() {
                     ))}
                   </div>
 
-                  <p className="mt-2 text-xs text-[#6B7280]">
-                    输入需求后会自动识别：金库类型、接收地址、Mint 价格、每次份额、分成比例、提现/救援/Guardian，并立即生成合规代码。
+                  <p className="text-xs text-[#6B7280]">
+                    输入需求后自动识别参数并生成 Flap V2 合规代码。
                   </p>
                 </div>
 
-                <div className="grid gap-4">
+                <div className="grid gap-3">
                   <div>
                     <label className="mb-1.5 block text-xs text-[#9CA3AF]">项目名称</label>
                     <input
@@ -449,20 +449,20 @@ export default function Chat() {
                   {/* Vault type cards */}
                   <div>
                     <label className="mb-2 block text-xs text-[#9CA3AF]">金库类型</label>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-3 gap-2">
                       {vaultTypes.map((t) => (
                         <button
                           key={t.value}
                           onClick={() => updateParam("vaultType", t.value)}
                           className={cn(
-                            "flex flex-col items-start gap-1.5 rounded-xl border p-3 text-left transition-all",
+                            "flex flex-col items-center gap-1.5 rounded-xl border p-2.5 text-center transition-all",
                             params.vaultType === t.value
                               ? "border-[#D0FF00]/50 bg-[#D0FF00]/10 text-[#D0FF00]"
                               : "border-[#25282C] bg-[#0A0B0D] text-[#9CA3AF] hover:border-[#D0FF00]/30 hover:text-white"
                           )}
                         >
                           <t.icon className="h-4 w-4" />
-                          <span className="text-xs font-medium">{t.label}</span>
+                          <span className="text-[11px] font-medium leading-tight">{t.mode}</span>
                         </button>
                       ))}
                     </div>
@@ -471,25 +471,20 @@ export default function Chat() {
                   {/* Network cards */}
                   <div>
                     <label className="mb-2 block text-xs text-[#9CA3AF]">目标网络</label>
-                    <div className="grid grid-cols-1 gap-2">
+                    <div className="grid grid-cols-2 gap-2">
                       {networks.map((n) => (
                         <button
                           key={n.value}
                           onClick={() => updateParam("network", n.value)}
                           className={cn(
-                            "flex items-center justify-between rounded-xl border px-4 py-3 text-left text-sm transition-all",
+                            "flex flex-col items-start gap-1 rounded-xl border px-3 py-2.5 text-left text-xs transition-all",
                             params.network === n.value
                               ? "border-[#D0FF00]/50 bg-[#D0FF00]/10 text-[#D0FF00]"
                               : "border-[#25282C] bg-[#0A0B0D] text-[#9CA3AF] hover:border-[#D0FF00]/30 hover:text-white"
                           )}
                         >
                           <span className="font-medium">{n.label}</span>
-                          <span
-                            className={cn(
-                              "h-2 w-2 rounded-full",
-                              params.network === n.value ? "bg-[#D0FF00]" : "bg-[#6B7280]"
-                            )}
-                          />
+                          <span className="text-[10px] opacity-70">chainId {n.chainId}</span>
                         </button>
                       ))}
                     </div>
