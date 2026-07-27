@@ -13,10 +13,9 @@ contract KIMI is ERC20, ERC20Burnable, Ownable {
     constructor(
         string memory name,
         string memory symbol,
-        uint256 initialSupply,
-        address initialOwner
-    ) ERC20(name, symbol) Ownable(initialOwner) {
-        _mint(initialOwner, initialSupply);
+        uint256 initialSupply
+    ) ERC20(name, symbol) Ownable() {
+        _mint(msg.sender, initialSupply);
     }
 
     /// @notice Allows the owner to mint additional KIMI.
