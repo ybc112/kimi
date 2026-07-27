@@ -199,8 +199,11 @@ function parseQuotaList(raw: string): bigint[] {
 }
 
 function pctToBp(value: string | undefined): number {
-  const pct = Number(value || "0");
-  return Math.round(pct * 100);
+  const num = Number(value || "0");
+  // 兼容两种输入习惯：
+  // - 百分比（如 5 表示 5%）→ 转换为 500 basis points
+  // - basis points（如 500 表示 5%）→ 直接使用
+  return num <= 25 ? Math.round(num * 100) : Math.round(num);
 }
 
 export function buildCreateTokenParams(formValues: CreateTokenFormValues): CreateTokenParams {
