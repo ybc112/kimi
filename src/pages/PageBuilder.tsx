@@ -11,25 +11,34 @@ import {
   LayoutTemplate,
   Download,
   Wand2,
+  Code2,
+  Eye,
 } from "lucide-react";
 import { DEFAULT_MODEL, sendChatMessage } from "@/lib/kimi";
 import { useAppStore } from "@/store";
+import { useContractData } from "@/hooks/useContractData";
 import { cn } from "@/lib/utils";
 
 type Device = "desktop" | "tablet" | "mobile";
 
 const TEMPLATES = [
-  { key: "landing", label: "落地页" },
-  { key: "dashboard", label: "Dashboard" },
-  { key: "form", label: "表单" },
-  { key: "product", label: "产品展示" },
-  { key: "team", label: "团队介绍" },
+  { key: "landing", label: "落地页", icon: LayoutTemplate },
+  { key: "dashboard", label: "Dashboard", icon: Monitor },
+  { key: "form", label: "表单", icon: LayoutTemplate },
+  { key: "product", label: "产品展示", icon: LayoutTemplate },
+  { key: "team", label: "团队介绍", icon: LayoutTemplate },
 ];
 
 const DEVICE_WIDTHS: Record<Device, string> = {
   desktop: "100%",
   tablet: "768px",
   mobile: "375px",
+};
+
+const DEVICE_LABELS: Record<Device, string> = {
+  desktop: "Desktop",
+  tablet: "Tablet",
+  mobile: "Mobile",
 };
 
 const EXAMPLE_PROMPT =
@@ -50,6 +59,7 @@ const PAGE_BUILDER_PROMPT = `你是一名前端开发专家。请根据用户的
 
 export default function PageBuilder() {
   const { addLog, showToast } = useAppStore();
+  const { recordPage } = useContractData();
 
   const [prompt, setPrompt] = useState("");
   const [generatedCode, setGeneratedCode] = useState("");
@@ -57,6 +67,7 @@ export default function PageBuilder() {
   const [copied, setCopied] = useState(false);
   const [device, setDevice] = useState<Device>("desktop");
   const [previewKey, setPreviewKey] = useState(0);
+  const [activeTab, setActiveTab] = useState<"code" | "preview">("code");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -68,7 +79,7 @@ export default function PageBuilder() {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, 320)}px`;
   }, [prompt]);
 
   const cleanCode = (text: string) => {
@@ -99,6 +110,7 @@ export default function PageBuilder() {
       setGeneratedCode(code);
       localStorage.setItem("page-builder-code", code);
       setPreviewKey((k) => k + 1);
+      recordPage();
       addLog({ type: "success", message: "AI 页面生成成功" });
       showToast({ type: "success", message: "页面生成成功" });
     } catch (error) {
@@ -148,27 +160,24 @@ export default function PageBuilder() {
     setPrompt(map[key] || "");
   };
 
+  const lineCount = generatedCode.split("\n").length;
+
   return (
-    <div className="flex min-h-[calc(100vh-8rem)] flex-col gap-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex min-h-[calc(100vh-8rem)] flex-col gap-4 lg:gap-6">
+      {/* Header */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-xl font-bold text-white">AI 页面生成器</h2>
-          <p className="text-xs text-[#84888C]">描述需求，AI 生成 HTML + Tailwind 页面并实时预览</p>
+          <h2 className="kimi-page-title">AI 页面生成器</h2>
+          <p className="kimi-page-subtitle">Page Builder · 描述需求，AI 生成 HTML + Tailwind 页面并实时预览</p>
         </div>
         <div className="flex items-center gap-2">
           {generatedCode && (
             <>
-              <button
-                onClick={handleCopy}
-                className="flex items-center gap-1.5 rounded-lg border border-[#303236] bg-[#15171A] px-3 py-2 text-xs text-[#9CA3AF] transition-colors hover:border-[#D0FF00]/30 hover:text-white"
-              >
+              <button onClick={handleCopy} className="kimi-btn-secondary">
                 {copied ? <Check className="h-3.5 w-3.5 text-[#D0FF00]" /> : <Copy className="h-3.5 w-3.5" />}
-                复制代码
+                {copied ? "已复制" : "复制代码"}
               </button>
-              <button
-                onClick={handleDownload}
-                className="flex items-center gap-1.5 rounded-lg border border-[#303236] bg-[#15171A] px-3 py-2 text-xs text-[#9CA3AF] transition-colors hover:border-[#D0FF00]/30 hover:text-white"
-              >
+              <button onClick={handleDownload} className="kimi-btn-secondary">
                 <Download className="h-3.5 w-3.5" />
                 下载
               </button>
@@ -177,11 +186,12 @@ export default function PageBuilder() {
         </div>
       </div>
 
-      <div className="grid flex-1 grid-cols-1 gap-4 lg:grid-cols-12 lg:overflow-hidden">
-        {/* Left: input */}
-        <div className="flex flex-col gap-4 lg:col-span-3">
-          <div className="flex flex-1 flex-col rounded-xl border border-[#23262A] bg-[#15171A] p-5">
-            <h3 className="mb-4 flex items-center gap-2 text-sm font-medium text-white">
+      {/* 3-column layout: 25% / 37.5% / 37.5% -> 2/8, 3/8, 3/8 */}
+      <div className="grid flex-1 grid-cols-1 gap-4 lg:grid-cols-8 lg:overflow-hidden">
+        {/* Left: input 25% */}
+        <div className="flex flex-col gap-4 lg:col-span-2">
+          <div className="kimi-card flex flex-1 flex-col">
+            <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-white">
               <Wand2 className="h-4 w-4 text-[#D0FF00]" />
               需求输入
             </h3>
@@ -191,19 +201,19 @@ export default function PageBuilder() {
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               placeholder={EXAMPLE_PROMPT}
-              className="min-h-[120px] w-full resize-none rounded-lg border border-[#303236] bg-[#0B0D0E] p-3 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
+              className="kimi-input min-h-[140px] flex-1 resize-none"
             />
 
             <div className="mt-4">
-              <p className="mb-2 text-xs text-[#84888C]">快速模板</p>
-              <div className="flex flex-wrap gap-2">
+              <p className="mb-2 text-xs font-medium text-[#9CA3AF]">快速模板</p>
+              <div className="grid grid-cols-2 gap-2">
                 {TEMPLATES.map((t) => (
                   <button
                     key={t.key}
                     onClick={() => applyTemplate(t.key)}
-                    className="flex items-center gap-1.5 rounded-full border border-[#303236] bg-[#0B0D0E] px-2.5 py-1 text-xs text-[#9CA3AF] transition-colors hover:border-[#D0FF00]/30 hover:text-white"
+                    className="flex items-center gap-1.5 rounded-xl border border-[#25282C] bg-[#0A0B0D] px-2.5 py-2 text-xs text-[#9CA3AF] transition-all hover:border-[#D0FF00]/30 hover:text-white"
                   >
-                    <LayoutTemplate className="h-3 w-3" />
+                    <t.icon className="h-3 w-3" />
                     {t.label}
                   </button>
                 ))}
@@ -213,7 +223,7 @@ export default function PageBuilder() {
             <button
               onClick={handleGenerate}
               disabled={!prompt.trim() || loading}
-              className="mt-auto flex w-full items-center justify-center gap-2 rounded-lg bg-[#D0FF00] py-2.5 text-sm font-semibold text-black transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+              className="kimi-btn-primary mt-auto w-full"
             >
               {loading ? (
                 <>
@@ -230,46 +240,81 @@ export default function PageBuilder() {
           </div>
         </div>
 
-        {/* Middle: code editor */}
-        <div className="flex flex-col rounded-xl border border-[#23262A] bg-[#15171A] lg:col-span-5">
-          <div className="flex items-center justify-between border-b border-[#23262A] px-4 py-3">
-            <h3 className="flex items-center gap-2 text-sm font-medium text-white">
-              <Sparkles className="h-4 w-4 text-[#2EDEDB]" />
+        {/* Middle: code editor 37.5% */}
+        <div className="flex flex-col rounded-2xl border border-[#25282C] bg-[#111215] lg:col-span-3 lg:min-h-0">
+          <div className="flex items-center justify-between border-b border-[#25282C] px-4 py-3">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
+              <Code2 className="h-4 w-4 text-[#2EDEDB]" />
               代码编辑器
             </h3>
-            <span className="text-xs text-[#5F656D]">HTML</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-[#6B7280]">{lineCount} lines</span>
+              <span className="rounded-lg bg-[#0A0B0D] px-2 py-0.5 text-xs text-[#9CA3AF]">HTML</span>
+            </div>
           </div>
-          <textarea
-            value={generatedCode}
-            onChange={(e) => {
-              setGeneratedCode(e.target.value);
-              localStorage.setItem("page-builder-code", e.target.value);
-            }}
-            placeholder="生成的 HTML 代码会显示在这里，你也可以直接编辑…"
-            className="flex-1 min-h-[300px] w-full resize-none bg-[#0B0D0E] p-4 font-mono text-xs leading-relaxed text-[#E8E8E8] outline-none placeholder:text-[#5F656D] lg:min-h-0"
-            spellCheck={false}
-          />
+
+          {/* Line numbers + editor */}
+          <div className="relative flex flex-1 overflow-hidden">
+            <div className="hidden w-12 select-none overflow-hidden border-r border-[#25282C] bg-[#0A0B0D] py-4 text-right text-xs leading-6 text-[#6B7280] sm:block">
+              {Array.from({ length: Math.max(lineCount, 20) }, (_, i) => (
+                <div key={i} className="px-2">
+                  {i + 1}
+                </div>
+              ))}
+            </div>
+            <textarea
+              value={generatedCode}
+              onChange={(e) => {
+                setGeneratedCode(e.target.value);
+                localStorage.setItem("page-builder-code", e.target.value);
+              }}
+              placeholder="生成的 HTML 代码会显示在这里，你也可以直接编辑…"
+              className="flex-1 resize-none bg-[#0A0B0D] p-4 font-mono text-xs leading-6 text-[#E8E8E8] outline-none placeholder:text-[#6B7280] sm:pl-4"
+              spellCheck={false}
+            />
+            {generatedCode && (
+              <div className="absolute right-3 top-3 flex gap-2">
+                <button
+                  onClick={handleCopy}
+                  className="rounded-lg border border-[#25282C] bg-[#111215] p-1.5 text-[#9CA3AF] shadow-sm transition-colors hover:text-white"
+                  title="复制"
+                >
+                  {copied ? <Check className="h-3.5 w-3.5 text-[#D0FF00]" /> : <Copy className="h-3.5 w-3.5" />}
+                </button>
+                <button
+                  onClick={handleDownload}
+                  className="rounded-lg border border-[#25282C] bg-[#111215] p-1.5 text-[#9CA3AF] shadow-sm transition-colors hover:text-white"
+                  title="下载"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Right: preview */}
-        <div className="flex flex-col rounded-xl border border-[#23262A] bg-[#15171A] lg:col-span-4">
-          <div className="flex items-center justify-between border-b border-[#23262A] px-4 py-3">
-            <h3 className="text-sm font-medium text-white">实时预览</h3>
+        {/* Right: preview 37.5% */}
+        <div className="flex flex-col rounded-2xl border border-[#25282C] bg-[#111215] lg:col-span-3 lg:min-h-0">
+          <div className="flex items-center justify-between border-b border-[#25282C] px-4 py-3">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
+              <Eye className="h-4 w-4 text-[#D0FF00]" />
+              实时预览
+            </h3>
             <div className="flex items-center gap-1">
               {([
-                { key: "desktop", icon: Monitor, label: "Desktop" },
-                { key: "tablet", icon: Tablet, label: "Tablet" },
-                { key: "mobile", icon: Smartphone, label: "Mobile" },
-              ] as { key: Device; icon: typeof Monitor; label: string }[]).map((d) => (
+                { key: "desktop", icon: Monitor },
+                { key: "tablet", icon: Tablet },
+                { key: "mobile", icon: Smartphone },
+              ] as { key: Device; icon: typeof Monitor }[]).map((d) => (
                 <button
                   key={d.key}
                   onClick={() => setDevice(d.key)}
-                  title={d.label}
+                  title={DEVICE_LABELS[d.key]}
                   className={cn(
                     "rounded-lg p-1.5 transition-colors",
                     device === d.key
                       ? "bg-[#D0FF00]/10 text-[#D0FF00]"
-                      : "text-[#5F656D] hover:text-white"
+                      : "text-[#6B7280] hover:text-white"
                   )}
                 >
                   <d.icon className="h-4 w-4" />
@@ -278,17 +323,43 @@ export default function PageBuilder() {
               <button
                 onClick={() => setPreviewKey((k) => k + 1)}
                 title="刷新预览"
-                className="ml-1 rounded-lg p-1.5 text-[#5F656D] transition-colors hover:text-white"
+                className="ml-1 rounded-lg p-1.5 text-[#6B7280] transition-colors hover:text-white"
               >
                 <RefreshCw className="h-4 w-4" />
               </button>
             </div>
           </div>
 
-          <div className="flex flex-1 items-center justify-center overflow-auto bg-[#0B0D0E] p-3">
+          {/* Mobile tab switcher */}
+          <div className="flex border-b border-[#25282C] lg:hidden">
+            {[
+              { key: "code", label: "代码", icon: Code2 },
+              { key: "preview", label: "预览", icon: Eye },
+            ].map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setActiveTab(t.key as typeof activeTab)}
+                className={cn(
+                  "flex flex-1 items-center justify-center gap-2 py-2.5 text-xs font-medium transition-colors",
+                  activeTab === t.key
+                    ? "border-b-2 border-[#D0FF00] text-[#D0FF00]"
+                    : "text-[#6B7280]"
+                )}
+              >
+                <t.icon className="h-3.5 w-3.5" />
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="relative flex flex-1 items-center justify-center overflow-auto bg-[#0A0B0D] p-4">
             {generatedCode ? (
               <div
-                className="h-full overflow-hidden rounded-lg border border-[#303236] bg-white transition-all"
+                className={cn(
+                  "h-full overflow-hidden rounded-xl border border-[#303236] bg-white transition-all",
+                  device === "mobile" && "border-[8px] border-[#1A1D21] shadow-2xl",
+                  device === "tablet" && "border-[6px] border-[#1A1D21] shadow-2xl"
+                )}
                 style={{ width: DEVICE_WIDTHS[device] }}
               >
                 <iframe
@@ -300,8 +371,10 @@ export default function PageBuilder() {
                 />
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center gap-3 px-6 text-center text-[#5F656D]">
-                <Monitor className="h-10 w-10 text-[#303236]" />
+              <div className="flex flex-col items-center justify-center gap-3 px-6 text-center text-[#6B7280]">
+                <div className="kimi-empty-icon">
+                  <Monitor className="h-7 w-7" />
+                </div>
                 <p className="text-sm">在左侧输入需求并点击「生成页面」</p>
               </div>
             )}

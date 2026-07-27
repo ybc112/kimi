@@ -11,6 +11,69 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
+  --bg-primary: #0A0B0D;
+  --bg-card: #111215;
+  --bg-elevated: #1A1D21;
+  --border-default: #25282C;
+  --border-subtle: #303236;
+  --accent-primary: #D0FF00;
+  --accent-secondary: #2EDEDB;
+  --text-primary: #FFFFFF;
+  --text-body: #E8E8E8;
+  --text-muted: #9CA3AF;
+  --text-weak: #6B7280;
+}
+
+@layer base {
+  body {
+    @apply bg-[#0A0B0D] text-[#E8E8E8];
+  }
+}
+
+@layer components {
+  .kimi-card {
+    @apply rounded-2xl border border-[#25282C] bg-[#111215] p-5 lg:p-6 transition-all duration-200;
+  }
+  .kimi-card-hover:hover {
+    @apply -translate-y-0.5 border-[#D0FF00]/30 shadow-[0_0_20px_rgba(208,255,0,0.08)];
+  }
+  .kimi-input {
+    @apply w-full rounded-lg border border-[#303236] bg-[#0A0B0D] px-3 py-2.5 text-sm text-white outline-none transition-all placeholder:text-[#6B7280] focus:border-[#D0FF00]/50 focus:ring-1 focus:ring-[#D0FF00]/20;
+  }
+  .kimi-btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all duration-200;
+  }
+  .kimi-btn-primary {
+    @apply kimi-btn bg-[#D0FF00] font-semibold text-black hover:brightness-110 hover:scale-[1.02] active:scale-[0.98];
+  }
+  .kimi-btn-secondary {
+    @apply kimi-btn border border-[#25282C] bg-[#1A1D21] text-[#E8E8E8] hover:border-[#D0FF00]/30 hover:text-white;
+  }
+  .kimi-btn-ghost {
+    @apply kimi-btn text-[#9CA3AF] hover:bg-[#1A1D21] hover:text-white;
+  }
+  .kimi-page-title {
+    @apply text-2xl font-bold text-white lg:text-3xl;
+  }
+  .kimi-page-subtitle {
+    @apply mt-1 text-sm text-[#9CA3AF];
+  }
+  .kimi-empty {
+    @apply flex flex-col items-center justify-center gap-3 px-6 py-16 text-center;
+  }
+  .kimi-empty-icon {
+    @apply flex h-14 w-14 items-center justify-center rounded-2xl bg-[#1A1D21] text-[#6B7280];
+  }
+}
+
+@keyframes page-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.page-fade-in {
+  animation: page-fade-in 300ms ease-out forwards;
 }
 
 @keyframes toast-enter {
@@ -41,4 +104,20 @@
   background: linear-gradient(90deg, #23262A 25%, #2A2D31 50%, #23262A 75%);
   background-size: 200% 100%;
   animation: skeleton-shimmer 1.5s infinite linear;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #303236;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3A3D42;
 }

@@ -1,7 +1,10 @@
-import { ExternalLink, CheckCircle2, Clock, List, Search, Copy, Share2 } from "lucide-react";
-import { useState } from "react";
+import { ExternalLink, CheckCircle2, Clock, List, Search, Copy, Share2, Trash2, Filter, Rocket, Flame, Box, Zap } from "lucide-react";
+import { useState, useMemo } from "react";
+import { useIssuedTokens } from "@/hooks/useIssuedTokens";
 import { useAppStore } from "@/store";
 import { cn } from "@/lib/utils";
+import type { TokenStatus, TokenType } from "@/types";
+import Empty from "@/components/Empty";
 
 const EXPLORERS: Record<string, string> = {
   "BNB Smart Chain": "https://bscscan.com/token",
@@ -10,112 +13,77 @@ const EXPLORERS: Record<string, string> = {
   Base: "https://basescan.org/token",
 };
 
-import type { TokenStatus } from "@/types";
-
-interface Token {
-  id: string;
-  name: string;
-  symbol: string;
-  address: string;
-  network: string;
-  deployedAt: string;
-  status: TokenStatus;
-  txHash?: string;
-  type?: string;
-  source?: string;
-}
-
-const fakeTokens: Token[] = [
-  {
-    id: "fake-1",
-    name: "Fcodex Token",
-    symbol: "FCDX",
-    address: "0x9aa9cadec931c58c2a22bbc5381b266d12887777",
-    network: "BNB Smart Chain",
-    deployedAt: "2026-07-25 14:32",
-    status: "verified",
-  },
-  {
-    id: "fake-2",
-    name: "AI Cat Coin",
-    symbol: "AICAT",
-    address: "0x7a8bC2De9d54C78f6b9C4D3eE1F2a0B1c2d3E4f5",
-    network: "BNB Smart Chain",
-    deployedAt: "2026-07-24 09:15",
-    status: "active",
-  },
-  {
-    id: "fake-3",
-    name: "MoonBeam Dividend",
-    symbol: "MBD",
-    address: "0x3F5a1B2c3D4e5F6a7B8c9D0E1F2A3B4C5D6E7F8A9",
-    network: "Arbitrum One",
-    deployedAt: "2026-07-23 18:44",
-    status: "active",
-  },
-  {
-    id: "fake-4",
-    name: "PandaSwap Buyback",
-    symbol: "PANDA",
-    address: "0xA1B2C3d4E5F6a7B8C9D0E1F2A3b4C5D6E7F8A9B0",
-    network: "Base",
-    deployedAt: "2026-07-22 11:08",
-    status: "pending",
-  },
-  {
-    id: "fake-5",
-    name: "Nova Liquidity Vault",
-    symbol: "NOVA",
-    address: "0xB2c3D4E5F6a7B8C9D0E1F2A3B4c5D6E7F8A9B0C1",
-    network: "Ethereum",
-    deployedAt: "2026-07-21 22:56",
-    status: "verified",
-  },
-  {
-    id: "fake-6",
-    name: "Satoshi Meme Launch",
-    symbol: "SATO",
-    address: "0xC3d4E5F6a7B8C9D0E1F2A3B4C5d6E7F8A9B0C1D2",
-    network: "BNB Smart Chain",
-    deployedAt: "2026-07-20 08:21",
-    status: "active",
-  },
-];
-
 const statusConfig: Record<
   TokenStatus,
   { label: string; color: string; bg: string; icon: React.ElementType }
 > = {
-  active: { label: "已激活", color: "text-[#D0FF00]", bg: "bg-[#D0FF00]/10", icon: CheckCircle2 },
+  success: { label: "已激活", color: "text-[#D0FF00]", bg: "bg-[#D0FF00]/10", icon: CheckCircle2 },
   pending: { label: "部署中", color: "text-[#F59E0B]", bg: "bg-[#F59E0B]/10", icon: Clock },
-  verified: { label: "已验证", color: "text-[#2EDEDB]", bg: "bg-[#2EDEDB]/10", icon: CheckCircle2 },
+  failed: { label: "失败", color: "text-[#FF6B6B]", bg: "bg-[#FF6B6B]/10", icon: Clock },
 };
 
+const typeConfig: Record<TokenType, { label: string; icon: React.ElementType; color: string }> = {
+  snowball: { label: "Snowball", icon: Flame, color: "text-[#FF6B6B]" },
+  flap: { label: "Flap", icon: Box, color: "text-[#2EDEDB]" },
+  meme: { label: "Meme", icon: Zap, color: "text-[#A78BFA]" },
+  custom: { label: "Custom", icon: Rocket, color: "text-[#9CA3AF]" },
+};
+
+const typeFilters: { value: TokenType | "all"; label: string; icon: React.ElementType }[] = [
+  { value: "all", label: "全部类型", icon: Filter },
+  { value: "snowball", label: "Snowball", icon: Flame },
+  { value: "flap", label: "Flap", icon: Box },
+  { value: "meme", label: "Meme", icon: Zap },
+  { value: "custom", label: "Custom", icon: Rocket },
+];
+
+const statusFilters: { value: TokenStatus | "all"; label: string }[] = [
+  { value: "all", label: "全部状态" },
+  { value: "success", label: "已激活" },
+  { value: "pending", label: "部署中" },
+  { value: "failed", label: "失败" },
+];
+
+function formatTime(ts: number) {
+  return new Date(ts).toLocaleString("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export default function IssuedTokens() {
-  const { issuedTokens, showToast } = useAppStore();
+  const { tokens, removeToken, clearTokens } = useIssuedTokens();
+  const { showToast } = useAppStore();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<TokenStatus | "all">("all");
+  const [typeFilter, setTypeFilter] = useState<TokenType | "all">("all");
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  const allTokens = [...issuedTokens, ...fakeTokens];
+  const filtered = useMemo(() => {
+    return tokens.filter((t) => {
+      const s = search.toLowerCase();
+      const matchesSearch =
+        t.name.toLowerCase().includes(s) ||
+        t.symbol.toLowerCase().includes(s) ||
+        t.address.toLowerCase().includes(s) ||
+        t.deployer.toLowerCase().includes(s);
+      const matchesStatus = statusFilter === "all" || t.status === statusFilter;
+      const matchesType = typeFilter === "all" || t.type === typeFilter;
+      return matchesSearch && matchesStatus && matchesType;
+    });
+  }, [tokens, search, statusFilter, typeFilter]);
 
-  const filtered = allTokens.filter((t) => {
-    const matchesSearch =
-      t.name.toLowerCase().includes(search.toLowerCase()) ||
-      t.symbol.toLowerCase().includes(search.toLowerCase()) ||
-      t.address.toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = statusFilter === "all" || t.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
-
-  const handleCopy = async (token: Token) => {
+  const handleCopy = async (token: (typeof tokens)[number]) => {
     await navigator.clipboard.writeText(token.address);
     setCopiedId(token.id);
     showToast({ type: "success", message: "地址已复制" });
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const handleShare = async (token: Token) => {
+  const handleShare = async (token: (typeof tokens)[number]) => {
     const text = `${token.name} (${token.symbol}) 合约地址：${token.address}`;
     if (navigator.share) {
       try {
@@ -130,46 +98,65 @@ export default function IssuedTokens() {
     }
   };
 
+  const stats = useMemo(() => {
+    return {
+      total: tokens.length,
+      success: tokens.filter((t) => t.status === "success").length,
+      pending: tokens.filter((t) => t.status === "pending").length,
+    };
+  }, [tokens]);
+
   return (
     <div className="flex min-h-[calc(100vh-8rem)] flex-col gap-6">
-      <div className="flex flex-col gap-4 rounded-2xl border border-[#23262A] bg-[#15171A] p-6 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">已发代币</h1>
-          <p className="mt-1 text-sm text-[#84888C]">用户与平台已部署的代币列表，点击可跳转链上浏览器</p>
+          <h2 className="kimi-page-title">已发代币</h2>
+          <p className="kimi-page-subtitle">Issued Tokens · 用户与平台已部署的代币列表</p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#5F656D]" />
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="搜索名称 / Symbol / 地址"
-              className="w-full rounded-lg border border-[#303236] bg-[#0B0D0E] py-2 pl-9 pr-4 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D] lg:w-64"
+              className="kimi-input w-full pl-9 lg:w-64"
             />
           </div>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as TokenStatus | "all")}
-            className="rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50"
+            className="kimi-input"
           >
-            <option value="all">全部状态</option>
-            <option value="active">已激活</option>
-            <option value="pending">部署中</option>
-            <option value="verified">已验证</option>
+            {statusFilters.map((s) => (
+              <option key={s.value} value={s.value}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value as TokenType | "all")}
+            className="kimi-input"
+          >
+            {typeFilters.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
           </select>
         </div>
       </div>
 
-      <div className="rounded-xl border border-[#23262A] bg-[#15171A] overflow-hidden">
+      <div className="rounded-2xl border border-[#25282C] bg-[#111215] overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-[#23262A] text-[#84888C]">
-                <th className="px-5 py-4 font-medium">代币名称</th>
-                <th className="px-5 py-4 font-medium">Symbol</th>
+              <tr className="border-b border-[#25282C] text-[#6B7280]">
+                <th className="px-5 py-4 font-medium">代币</th>
                 <th className="px-5 py-4 font-medium">合约地址</th>
-                <th className="px-5 py-4 font-medium">部署网络</th>
+                <th className="px-5 py-4 font-medium">网络</th>
                 <th className="px-5 py-4 font-medium">部署时间</th>
                 <th className="px-5 py-4 font-medium">状态</th>
                 <th className="px-5 py-4 font-medium text-right">操作</th>
@@ -179,33 +166,35 @@ export default function IssuedTokens() {
               {filtered.map((token) => {
                 const status = statusConfig[token.status];
                 const StatusIcon = status.icon;
+                const tcfg = typeConfig[token.type];
+                const TypeIcon = tcfg.icon;
                 const explorerBase = EXPLORERS[token.network] ?? EXPLORERS["BNB Smart Chain"];
-                const isLocal = token.source || token.type;
                 return (
                   <tr
                     key={token.id}
-                    className="border-b border-[#23262A] last:border-0 transition-colors hover:bg-[#0B0D0E]/50"
+                    className="border-b border-[#25282C] last:border-0 transition-colors hover:bg-[#0A0B0D]/50"
                   >
-                    <td className="px-5 py-4 font-medium text-white">
-                      <div className="flex items-center gap-2">
-                        {token.name}
-                        {isLocal && (
-                          <span className="rounded bg-[#D0FF00]/10 px-1.5 py-0.5 text-[10px] text-[#D0FF00]">
-                            我的
-                          </span>
-                        )}
-                      </div>
-                    </td>
                     <td className="px-5 py-4">
-                      <span className="rounded bg-[#23262A] px-2 py-1 text-xs font-medium text-[#D0FF00]">
-                        {token.symbol}
-                      </span>
+                      <div className="flex items-center gap-3">
+                        <div className={cn("flex h-8 w-8 items-center justify-center rounded-lg bg-[#0A0B0D]", tcfg.color)}>
+                          <TypeIcon className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <div className="font-medium text-white">{token.name}</div>
+                          <div className="flex items-center gap-2 text-xs text-[#6B7280]">
+                            <span className="rounded bg-[#25282C] px-1.5 py-0.5 font-medium text-[#D0FF00]">
+                              {token.symbol}
+                            </span>
+                            <span>{tcfg.label}</span>
+                          </div>
+                        </div>
+                      </div>
                     </td>
                     <td className="px-5 py-4 font-mono text-xs text-[#9CA3AF]">
                       {token.address.slice(0, 8)}...{token.address.slice(-6)}
                     </td>
                     <td className="px-5 py-4 text-[#9CA3AF]">{token.network}</td>
-                    <td className="px-5 py-4 text-[#9CA3AF]">{token.deployedAt}</td>
+                    <td className="px-5 py-4 text-[#9CA3AF]">{formatTime(token.createdAt)}</td>
                     <td className="px-5 py-4">
                       <span
                         className={cn(
@@ -222,7 +211,7 @@ export default function IssuedTokens() {
                       <div className="flex items-center justify-end gap-2">
                         <button
                           onClick={() => handleCopy(token)}
-                          className="rounded-lg border border-[#303236] bg-[#0B0D0E] px-2 py-1.5 text-[#9CA3AF] transition-colors hover:border-[#D0FF00]/30 hover:text-white"
+                          className="kimi-btn-secondary py-1.5 px-2 text-xs"
                           title="复制地址"
                         >
                           {copiedId === token.id ? (
@@ -235,17 +224,24 @@ export default function IssuedTokens() {
                           href={`${explorerBase}/${token.address}`}
                           target="_blank"
                           rel="noreferrer"
-                          className="rounded-lg border border-[#303236] bg-[#0B0D0E] px-2 py-1.5 text-[#9CA3AF] transition-colors hover:border-[#D0FF00]/30 hover:text-white"
+                          className="kimi-btn-secondary py-1.5 px-2 text-xs"
                           title="查看浏览器"
                         >
                           <ExternalLink className="h-3.5 w-3.5" />
                         </a>
                         <button
                           onClick={() => handleShare(token)}
-                          className="rounded-lg border border-[#303236] bg-[#0B0D0E] px-2 py-1.5 text-[#9CA3AF] transition-colors hover:border-[#D0FF00]/30 hover:text-white"
+                          className="kimi-btn-secondary py-1.5 px-2 text-xs"
                           title="分享"
                         >
                           <Share2 className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => removeToken(token.id)}
+                          className="rounded-xl border border-[#25282C] bg-[#0A0B0D] px-2 py-1.5 text-[#9CA3AF] transition-colors hover:border-[#FF6B6B]/30 hover:text-[#FF6B6B]"
+                          title="删除"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </div>
                     </td>
@@ -257,27 +253,38 @@ export default function IssuedTokens() {
         </div>
 
         {filtered.length === 0 && (
-          <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#23262A]">
-              <List className="h-6 w-6 text-[#5F656D]" />
-            </div>
-            <p className="text-sm text-[#5F656D]">未找到匹配的代币</p>
-          </div>
+          <Empty
+            icon={<List className="h-7 w-7" />}
+            title={tokens.length === 0 ? "暂无代币" : "未找到匹配代币"}
+            subtitle={tokens.length === 0 ? "部署合约或一键发币后，代币会出现在这里" : "尝试调整搜索或筛选条件"}
+          />
         )}
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {[
-          { label: "已部署代币", value: allTokens.length.toString() },
-          { label: "已验证", value: allTokens.filter((t) => t.status === "verified").length.toString() },
-          { label: "部署中", value: allTokens.filter((t) => t.status === "pending").length.toString() },
+          { label: "已部署代币", value: stats.total.toString() },
+          { label: "已激活", value: stats.success.toString() },
+          { label: "部署中", value: stats.pending.toString() },
         ].map((stat) => (
-          <div key={stat.label} className="rounded-xl border border-[#23262A] bg-[#15171A] p-4">
-            <p className="text-xs text-[#5F656D]">{stat.label}</p>
+          <div key={stat.label} className="kimi-card">
+            <p className="text-xs text-[#6B7280]">{stat.label}</p>
             <p className="mt-1 text-2xl font-bold text-white">{stat.value}</p>
           </div>
         ))}
       </div>
+
+      {tokens.length > 0 && (
+        <div className="flex justify-end">
+          <button
+            onClick={clearTokens}
+            className="flex items-center gap-2 rounded-xl border border-[#25282C] bg-[#111215] px-4 py-2 text-xs text-[#9CA3AF] transition-colors hover:border-[#FF6B6B]/30 hover:text-[#FF6B6B]"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            清空本地代币记录
+          </button>
+        </div>
+      )}
     </div>
   );
 }

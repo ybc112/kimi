@@ -19,6 +19,7 @@ import {
   Clock,
 } from "lucide-react";
 import { KimiIcon } from "@/components/KimiIcon";
+import { useContractData } from "@/hooks/useContractData";
 import { cn } from "@/lib/utils";
 
 const features = [
@@ -93,47 +94,56 @@ const stats = [
   { label: "发射台合约", value: "0x972D...A97EC", icon: ShieldCheck },
 ];
 
-const todayStats = [
-  { label: "已生成合约", value: "1,248", change: "+36", icon: FileCode },
-  { label: "已部署代币", value: "86", change: "+5", icon: Flame },
-  { label: "节省开发时间", value: "412h", change: "+28h", icon: Clock },
-];
+const activityIcons: Record<string, React.ElementType> = {
+  generate: FileCode,
+  deploy: Flame,
+  launch: Rocket,
+  page: Wand2,
+  system: Activity,
+};
 
-const activities = [
-  { text: "刚刚生成了 MyFlapVault 合约", time: "2 分钟前", icon: FileCode },
-  { text: "0x3a2f...e8c1 部署了代币 SATO", time: "5 分钟前", icon: Flame },
-  { text: "AI 页面生成器生成了新的 Dashboard", time: "12 分钟前", icon: Wand2 },
-  { text: "0x71ab...d4f2 完成了 Meme 一键发射", time: "18 分钟前", icon: Rocket },
-  { text: "系统完成了一次热搜榜刷新", time: "30 分钟前", icon: TrendingUp },
-];
+function formatTimeAgo(time: number) {
+  const diff = Math.floor((Date.now() - time) / 1000);
+  if (diff < 60) return "刚刚";
+  if (diff < 3600) return `${Math.floor(diff / 60)} 分钟前`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)} 小时前`;
+  return `${Math.floor(diff / 86400)} 天前`;
+}
 
 export default function Home() {
   const navigate = useNavigate();
+  const { stats: todayStats, activities } = useContractData();
+
+  const todayStatsList = [
+    { label: "已生成合约", value: todayStats.generated.toLocaleString("zh-CN"), change: "+1", icon: FileCode },
+    { label: "已部署代币", value: todayStats.deployed.toLocaleString("zh-CN"), change: "+1", icon: Flame },
+    { label: "节省开发时间", value: `${todayStats.savedHours}h`, change: "+1h", icon: Clock },
+  ];
 
   return (
-    <div className="flex min-h-[calc(100vh-8rem)] flex-col gap-6">
+    <div className="flex min-h-[calc(100vh-8rem)] flex-col gap-6 lg:gap-8">
       {/* Welcome */}
-      <div className="relative overflow-hidden rounded-2xl border border-[#23262A] bg-[#15171A] p-6 lg:p-8">
+      <div className="relative overflow-hidden rounded-2xl border border-[#25282C] bg-[#111215] p-6 lg:p-8">
         <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-[#D0FF00]/10 blur-3xl" />
         <div className="absolute bottom-0 left-1/3 h-32 w-32 rounded-full bg-[#2EDEDB]/10 blur-3xl" />
         <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-4">
             <div className="relative">
-              <KimiIcon size={64} className="h-16 w-16 rounded-2xl border border-[#23262A] shadow-lg" />
+              <KimiIcon size={64} className="h-16 w-16 rounded-2xl border border-[#25282C] shadow-lg" />
               <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#D0FF00] text-[10px] text-black">
                 <Sparkles className="h-3 w-3" />
               </span>
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-white lg:text-3xl">Kimi FLAP VAULT - V2</h1>
-              <p className="mt-1 text-sm text-[#84888C]">
+              <h1 className="kimi-page-title">Kimi FLAP VAULT - V2</h1>
+              <p className="kimi-page-subtitle">
                 AI 驱动的合约生成、合约部署与代币发射控制台
               </p>
             </div>
           </div>
           <button
             onClick={() => navigate("/vault")}
-            className="flex items-center justify-center gap-2 self-start rounded-lg bg-[#D0FF00] px-5 py-2.5 text-sm font-semibold text-black transition-opacity hover:opacity-90 sm:self-auto"
+            className="kimi-btn-primary self-start sm:self-auto"
           >
             <MessageSquare className="h-4 w-4" />
             开始生成
@@ -142,19 +152,19 @@ export default function Home() {
         </div>
 
         {/* Today stats */}
-        <div className="relative mt-6 grid grid-cols-1 gap-3 border-t border-[#23262A] pt-6 sm:grid-cols-3">
-          {todayStats.map((stat) => (
+        <div className="relative mt-6 grid grid-cols-1 gap-3 border-t border-[#25282C] pt-6 sm:grid-cols-3">
+          {todayStatsList.map((stat) => (
             <div
               key={stat.label}
-              className="rounded-xl border border-[#23262A] bg-[#0B0D0E] p-4 transition-colors hover:border-[#D0FF00]/20"
+              className="kimi-card kimi-card-hover"
             >
-              <div className="mb-2 flex items-center gap-2 text-[#5F656D]">
+              <div className="mb-2 flex items-center gap-2 text-[#6B7280]">
                 <stat.icon className="h-4 w-4" />
                 <p className="text-xs">{stat.label}</p>
               </div>
               <div className="flex items-end gap-3">
                 <p className="text-xl font-bold text-white">{stat.value}</p>
-                <span className="mb-1 text-xs font-medium text-[#D0FF00]">+{stat.change}</span>
+                <span className="mb-1 text-xs font-medium text-[#D0FF00]">{stat.change}</span>
               </div>
             </div>
           ))}
@@ -163,21 +173,27 @@ export default function Home() {
 
       {/* Feature grid */}
       <div>
-        <h2 className="mb-4 text-sm font-semibold text-[#9CA3AF]">功能入口</h2>
+        <div className="mb-4 flex items-center gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-white">功能入口</h2>
+            <p className="text-xs text-[#6B7280]">FEATURES</p>
+          </div>
+          <div className="flex-1 border-t border-[#25282C]" />
+        </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {features.map((feature) => (
             <button
               key={feature.to}
               onClick={() => navigate(feature.to)}
-              className="group relative overflow-hidden rounded-xl border border-[#23262A] bg-[#15171A] p-5 text-left transition-all duration-200 hover:-translate-y-1 hover:border-[#D0FF00]/30 hover:bg-[#1A1D21] hover:shadow-lg hover:shadow-[#D0FF00]/5"
+              className="kimi-card group text-left transition-all duration-200 hover:-translate-y-1 hover:border-[#D0FF00]/30 hover:bg-[#1A1D21] hover:shadow-[0_0_20px_rgba(208,255,0,0.08)]"
             >
-              <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-[#0B0D0E] transition-colors group-hover:bg-[#23262A]">
+              <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-[#0A0B0D] transition-colors group-hover:bg-[#25282C]">
                 <feature.icon className="h-5 w-5" style={{ color: feature.color }} />
               </div>
               <h3 className="mb-1.5 text-base font-semibold text-white group-hover:text-[#D0FF00]">
                 {feature.title}
               </h3>
-              <p className="text-sm leading-relaxed text-[#84888C]">{feature.description}</p>
+              <p className="text-sm leading-relaxed text-[#9CA3AF]">{feature.description}</p>
               <div className="absolute bottom-5 right-5 opacity-0 transition-opacity group-hover:opacity-100">
                 <ArrowRight className="h-4 w-4 text-[#D0FF00]" />
               </div>
@@ -188,34 +204,46 @@ export default function Home() {
 
       {/* Bottom: recent activity + status */}
       <div className="mt-auto grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="rounded-xl border border-[#23262A] bg-[#15171A] p-4 lg:col-span-2">
-          <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-white">
+        <div className="kimi-card lg:col-span-2">
+          <h3 className="mb-4 flex items-center gap-2 text-base font-semibold text-white">
             <Activity className="h-4 w-4 text-[#2EDEDB]" />
             最近动态
+            <span className="text-xs font-normal text-[#6B7280]">/ RECENT ACTIVITY</span>
           </h3>
-          <ul className="space-y-2">
-            {activities.map((item, index) => (
-              <li
-                key={index}
-                className="flex items-center justify-between rounded-lg bg-[#0B0D0E] px-3 py-2 text-sm"
-              >
-                <div className="flex items-center gap-2.5">
-                  <item.icon className="h-3.5 w-3.5 text-[#9CA3AF]" />
-                  <span className="text-[#E8E8E8]">{item.text}</span>
-                </div>
-                <span className="text-xs text-[#5F656D]">{item.time}</span>
-              </li>
-            ))}
-          </ul>
+          {activities.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-[#25282C] bg-[#0A0B0D] px-6 py-10 text-center">
+              <p className="text-sm text-[#6B7280]">暂无动态，去生成你的第一个合约吧</p>
+            </div>
+          ) : (
+            <ul className="space-y-2">
+              {activities.slice(0, 6).map((item) => {
+                const Icon = activityIcons[item.type] || Activity;
+                return (
+                  <li
+                    key={item.id}
+                    className="flex items-center justify-between rounded-xl bg-[#0A0B0D] px-4 py-3 text-sm transition-colors hover:bg-[#1A1D21]"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#1A1D21]">
+                        <Icon className="h-3.5 w-3.5 text-[#9CA3AF]" />
+                      </div>
+                      <span className="text-[#E8E8E8]">{item.text}</span>
+                    </div>
+                    <span className="text-xs text-[#6B7280]">{formatTimeAgo(item.time)}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </div>
 
         <div className="grid grid-cols-1 gap-4">
           {stats.map((stat) => (
             <div
               key={stat.label}
-              className="rounded-xl border border-[#23262A] bg-[#15171A] p-4 transition-colors hover:border-[#D0FF00]/20"
+              className="kimi-card transition-all hover:border-[#D0FF00]/20"
             >
-              <div className="mb-2 flex items-center gap-2 text-[#5F656D]">
+              <div className="mb-2 flex items-center gap-2 text-[#6B7280]">
                 <stat.icon className="h-4 w-4" />
                 <p className="text-xs">{stat.label}</p>
               </div>

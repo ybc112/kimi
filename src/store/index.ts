@@ -18,7 +18,8 @@ interface AppState {
   addLog: (log: Omit<LogEntry, "id" | "timestamp">) => void;
   clearLogs: () => void;
 
-  addIssuedToken: (token: Omit<IssuedToken, "id" | "deployedAt">) => void;
+  addIssuedToken: (token: Omit<IssuedToken, "id" | "createdAt">) => void;
+  updateIssuedToken: (id: string, updates: Partial<IssuedToken>) => void;
   removeIssuedToken: (id: string) => void;
   clearIssuedTokens: () => void;
 
@@ -90,10 +91,15 @@ export const useAppStore = create<AppState>()(
             {
               ...token,
               id: crypto.randomUUID(),
-              deployedAt: new Date().toLocaleString("zh-CN"),
+              createdAt: Date.now(),
             },
             ...state.issuedTokens,
           ],
+        })),
+
+      updateIssuedToken: (id, updates) =>
+        set((state) => ({
+          issuedTokens: state.issuedTokens.map((t) => (t.id === id ? { ...t, ...updates } : t)),
         })),
 
       removeIssuedToken: (id) =>

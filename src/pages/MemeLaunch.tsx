@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   Sparkles,
   Zap,
@@ -17,8 +17,11 @@ import {
 import { ethers } from "ethers";
 import { useAppStore } from "@/store";
 import { useWallet } from "@/hooks/useWallet";
+import { useIssuedTokens } from "@/hooks/useIssuedTokens";
+import { useContractData } from "@/hooks/useContractData";
 import { DEFAULT_MODEL, sendChatMessage } from "@/lib/kimi";
 import { cn } from "@/lib/utils";
+import Empty from "@/components/Empty";
 import {
   SNOWBALL_LAUNCHPAD_ADDRESS,
   CREATE_FEE_WEI,
@@ -80,6 +83,8 @@ const GRADIENTS = [
   "linear-gradient(135deg, #30cfd0 0%, #330867 100%)",
 ];
 
+const MEME_STORAGE_KEY = "kimi-meme-launch";
+
 function randomAvatar() {
   const idx = Math.floor(Math.random() * GRADIENTS.length);
   return {
@@ -88,9 +93,30 @@ function randomAvatar() {
   };
 }
 
+interface SavedMeme {
+  concept: string;
+  form: CreateTokenFormValues;
+  description: string;
+  avatar: ReturnType<typeof randomAvatar>;
+}
+
+function readSavedMeme(): SavedMeme | null {
+  try {
+    const raw = localStorage.getItem(MEME_STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return null;
+}
+
+function saveMeme(meme: SavedMeme) {
+  localStorage.setItem(MEME_STORAGE_KEY, JSON.stringify(meme));
+}
+
 export default function MemeLaunch() {
   const { addLog, showToast } = useAppStore();
   const wallet = useWallet();
+  const { addToken } = useIssuedTokens();
+  const { recordLaunch } = useContractData();
 
   const [concept, setConcept] = useState("");
   const [form, setForm] = useState<CreateTokenFormValues>(DEFAULT_FORM);
@@ -105,8 +131,22 @@ export default function MemeLaunch() {
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [copied, setCopied] = useState(false);
 
+  useEffect(() => {
+    const saved = readSavedMeme();
+    if (saved) {
+      setConcept(saved.concept);
+      setForm(saved.form);
+      setGeneratedDescription(saved.description);
+      setAvatar(saved.avatar);
+    }
+  }, []);
+
   const updateForm = (key: keyof CreateTokenFormValues, value: string | boolean) => {
-    setForm((prev) => ({ ...prev, [key]: value }));
+    setForm((prev) => {
+      const next = { ...prev, [key]: value };
+      saveMeme({ concept, form: next, description: generatedDescription, avatar });
+      return next;
+    });
   };
 
   const handleGenerate = useCallback(async () => {
@@ -136,13 +176,16 @@ export default function MemeLaunch() {
       const parsed = JSON.parse(jsonText);
 
       if (parsed.name && parsed.symbol && parsed.description) {
-        setForm((prev) => ({
-          ...prev,
+        const nextAvatar = randomAvatar();
+        const nextForm = {
+          ...form,
           name: String(parsed.name),
           symbol: String(parsed.symbol).toUpperCase(),
-        }));
+        };
+        setForm(nextForm);
         setGeneratedDescription(String(parsed.description));
-        setAvatar(randomAvatar());
+        setAvatar(nextAvatar);
+        saveMeme({ concept, form: nextForm, description: String(parsed.description), avatar: nextAvatar });
         addLog({
           type: "success",
           message: "Meme 文案生成成功",
@@ -160,7 +203,7 @@ export default function MemeLaunch() {
     } finally {
       setGenerating(false);
     }
-  }, [concept, generating, addLog, showToast]);
+  }, [concept, generating, addLog, showToast, form]);
 
   const handleLaunch = async () => {
     if (!wallet.isConnected || !wallet.signer) {
@@ -200,6 +243,19 @@ export default function MemeLaunch() {
       const createdToken = event?.args?.token as string | undefined;
       if (createdToken) {
         setTokenAddress(createdToken);
+        addToken({
+          name: form.name,
+          symbol: form.symbol,
+          address: createdToken,
+          deployer: wallet.account || "",
+          network: "BNB Smart Chain",
+          chainId: 56,
+          txHash: tx.hash,
+          status: "success",
+          totalSupply: form.totalSupply,
+          type: "meme",
+        });
+        recordLaunch(form.name);
       }
       setTxStatus("success");
       addLog({ type: "success", message: "代币创建成功", detail: createdToken });
@@ -237,18 +293,19 @@ export default function MemeLaunch() {
 
   return (
     <div className="flex min-h-[calc(100vh-7rem)] flex-col gap-4 lg:h-[calc(100vh-3rem)]">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-xl font-bold text-white">Meme 一键发射</h2>
-          <p className="text-xs text-[#84888C]">输入概念生成文案，连接钱包即可在 BSC 上发射代币</p>
+          <h2 className="kimi-page-title">Meme 一键发射</h2>
+          <p className="kimi-page-subtitle">Meme Launch · 输入概念生成文案，连接钱包即可在 BSC 上发射代币</p>
         </div>
         <div className="flex items-center gap-2">
           {wallet.isConnected ? (
-            <div className="flex items-center gap-2 rounded-lg border border-[#23262A] bg-[#15171A] px-3 py-2 text-xs">
+            <div className="kimi-card flex-row items-center gap-2 py-2 px-3">
               <span className="h-2 w-2 rounded-full bg-[#D0FF00]" />
-              <span className="text-[#9CA3AF]">
+              <span className="text-xs text-[#9CA3AF]">
                 {wallet.account?.slice(0, 6)}...{wallet.account?.slice(-4)}
               </span>
+              <span className="text-xs text-[#6B7280]">{Number(wallet.balance).toFixed(4)} BNB</span>
               {!wallet.isBSC && (
                 <button
                   onClick={wallet.switchToBSC}
@@ -257,21 +314,14 @@ export default function MemeLaunch() {
                   切换 BSC
                 </button>
               )}
-              <button
-                onClick={wallet.disconnectWallet}
-                className="ml-1 text-[#5F656D] hover:text-white"
-              >
+              <button onClick={wallet.disconnectWallet} className="ml-1 text-xs text-[#6B7280] hover:text-white">
                 断开
               </button>
             </div>
           ) : (
-            <button
-              onClick={wallet.connectWallet}
-              disabled={wallet.loading}
-              className="flex items-center gap-2 rounded-lg border border-[#23262A] bg-[#15171A] px-4 py-2 text-sm text-[#9CA3AF] transition-colors hover:border-[#D0FF00]/30 hover:text-white disabled:opacity-50"
-            >
-              <Wallet className="h-4 w-4" />
-              {wallet.loading ? "连接中" : "连接钱包"}
+            <button onClick={wallet.connectWallet} disabled={wallet.loading} className="kimi-btn-secondary">
+              {wallet.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}
+              连接钱包
             </button>
           )}
         </div>
@@ -280,42 +330,36 @@ export default function MemeLaunch() {
       <div className="flex flex-1 flex-col gap-4 lg:flex-row lg:overflow-hidden">
         {/* Left: Concept */}
         <div className="flex w-full flex-col gap-4 lg:w-[420px] lg:overflow-auto">
-          <div className="rounded-xl border border-[#23262A] bg-[#15171A] p-5">
-            <h3 className="mb-4 flex items-center gap-2 text-sm font-medium text-white">
+          <div className="kimi-card">
+            <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-white">
               <Sparkles className="h-4 w-4 text-[#D0FF00]" />
               Meme 概念
             </h3>
             <textarea
               value={concept}
-              onChange={(e) => setConcept(e.target.value)}
+              onChange={(e) => {
+                setConcept(e.target.value);
+                saveMeme({ concept: e.target.value, form, description: generatedDescription, avatar });
+              }}
               placeholder="输入一个 Meme 概念，例如：AI 猫、火星狗、月球蛙..."
               rows={4}
-              className="w-full resize-none rounded-lg border border-[#303236] bg-[#0B0D0E] p-3 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
+              className="kimi-input min-h-[100px] resize-none"
             />
             <div className="mt-4 flex gap-2">
               <button
                 onClick={handleGenerate}
                 disabled={!concept.trim() || generating}
-                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#D0FF00] py-2.5 text-sm font-semibold text-black transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                className="kimi-btn-primary flex-1 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                {generating ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    生成中
-                  </>
-                ) : (
-                  <>
-                    <Zap className="h-4 w-4" />
-                    生成文案
-                  </>
-                )}
+                {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+                生成文案
               </button>
               {form.name && (
                 <button
                   onClick={handleGenerate}
                   disabled={!concept.trim() || generating}
                   title="重新生成"
-                  className="flex items-center justify-center gap-2 rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 text-sm text-[#9CA3AF] transition-colors hover:border-[#D0FF00]/30 hover:text-white disabled:opacity-40"
+                  className="kimi-btn-secondary px-3 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <RefreshCw className={cn("h-4 w-4", generating && "animate-spin")} />
                 </button>
@@ -323,29 +367,33 @@ export default function MemeLaunch() {
             </div>
 
             {generatedDescription && (
-              <div className="mt-4 rounded-lg border border-[#D0FF00]/20 bg-[#D0FF00]/5 p-3">
-                <p className="text-xs text-[#84888C]">AI 生成简介</p>
+              <div className="mt-4 rounded-xl border border-[#D0FF00]/20 bg-[#D0FF00]/5 p-3">
+                <p className="text-xs text-[#9CA3AF]">AI 生成简介</p>
                 <p className="mt-1 text-sm text-[#E8E8E8]">{generatedDescription}</p>
               </div>
             )}
           </div>
 
-          <div className="rounded-xl border border-[#23262A] bg-[#15171A] p-5">
+          <div className="kimi-card">
             <div className="mb-4 flex items-center justify-between">
-              <h3 className="flex items-center gap-2 text-sm font-medium text-white">
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
                 <ImageIcon className="h-4 w-4 text-[#2EDEDB]" />
                 代币头像
               </h3>
               <button
-                onClick={() => setAvatar(randomAvatar())}
-                className="flex items-center gap-1 rounded-lg border border-[#303236] bg-[#0B0D0E] px-2 py-1 text-xs text-[#9CA3AF] transition-colors hover:border-[#D0FF00]/30 hover:text-white"
+                onClick={() => {
+                  const next = randomAvatar();
+                  setAvatar(next);
+                  saveMeme({ concept, form, description: generatedDescription, avatar: next });
+                }}
+                className="kimi-btn-secondary py-1.5 px-2 text-xs"
               >
                 <Dices className="h-3 w-3" />
                 换一换
               </button>
             </div>
             <div
-              className="flex aspect-square flex-col items-center justify-center overflow-hidden rounded-lg border border-dashed border-[#303236] bg-[#0B0D0E] p-4 text-center"
+              className="flex aspect-square flex-col items-center justify-center overflow-hidden rounded-xl border border-dashed border-[#303236] bg-[#0A0B0D] p-4 text-center"
               style={{
                 backgroundImage: `${avatar.pattern}, ${imageUrl ? `url(${imageUrl})` : avatar.background}`,
                 backgroundSize: "cover",
@@ -363,124 +411,114 @@ export default function MemeLaunch() {
               value={imageUrl}
               onChange={(e) => setImageUrl(e.target.value)}
               placeholder="预留 imageUrl（可粘贴测试图片链接）"
-              className="mt-3 w-full rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-2 text-xs text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
+              className="kimi-input mt-3 text-xs"
             />
           </div>
         </div>
 
         {/* Right: Token params */}
-        <div className="flex flex-1 flex-col rounded-xl border border-[#23262A] bg-[#15171A] lg:min-h-0 lg:overflow-hidden">
-          <div className="border-b border-[#23262A] px-5 py-4">
+        <div className="flex flex-1 flex-col rounded-2xl border border-[#25282C] bg-[#111215] lg:min-h-0 lg:overflow-hidden">
+          <div className="border-b border-[#25282C] px-5 py-4">
             <h3 className="font-semibold text-white">代币参数</h3>
           </div>
 
           <div className="flex-1 space-y-5 overflow-auto p-5">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <div>
-                <label className="mb-1.5 block text-xs text-[#84888C]">代币名称</label>
+                <label className="mb-1.5 block text-xs text-[#9CA3AF]">代币名称</label>
                 <input
                   type="text"
                   value={form.name}
                   onChange={(e) => updateForm("name", e.target.value)}
                   placeholder="AI Cat Coin"
-                  className="w-full rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
+                  className="kimi-input"
                 />
               </div>
               <div>
-                <label className="mb-1.5 block text-xs text-[#84888C]">代币符号</label>
+                <label className="mb-1.5 block text-xs text-[#9CA3AF]">代币符号</label>
                 <input
                   type="text"
                   value={form.symbol}
                   onChange={(e) => updateForm("symbol", e.target.value.toUpperCase())}
                   placeholder="AICAT"
-                  className="w-full rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
+                  className="kimi-input"
                 />
               </div>
               <div>
-                <label className="mb-1.5 block text-xs text-[#84888C]">总供应量</label>
+                <label className="mb-1.5 block text-xs text-[#9CA3AF]">总供应量</label>
                 <input
                   type="text"
                   value={form.totalSupply}
                   onChange={(e) => updateForm("totalSupply", e.target.value.replace(/\D/g, ""))}
                   placeholder="1000000000"
-                  className="w-full rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
+                  className="kimi-input"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <label className="mb-1.5 block text-xs text-[#84888C]">隐藏费接收地址</label>
+                <label className="mb-1.5 block text-xs text-[#9CA3AF]">隐藏费接收地址</label>
                 <input
                   type="text"
                   value={form.hiddenFeeReceiver}
                   onChange={(e) => updateForm("hiddenFeeReceiver", e.target.value)}
                   placeholder="留空则默认为你的钱包地址"
-                  className="w-full rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
+                  className="kimi-input"
                 />
               </div>
               <div>
-                <label className="mb-1.5 block text-xs text-[#84888C]">分红代币地址</label>
+                <label className="mb-1.5 block text-xs text-[#9CA3AF]">分红代币地址</label>
                 <input
                   type="text"
                   value={form.rewardToken}
                   onChange={(e) => updateForm("rewardToken", e.target.value)}
                   placeholder={BSC_USDT_ADDRESS}
-                  className="w-full rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
+                  className="kimi-input"
                 />
               </div>
             </div>
 
-            <div className="rounded-lg border border-[#23262A] bg-[#0B0D0E] p-4">
+            <div className="rounded-xl border border-[#25282C] bg-[#0A0B0D] p-4">
               <div className="mb-3 flex items-center justify-between">
                 <span className="text-sm font-medium text-white">买入税率（Basis Points）</span>
-                <span
-                  className={cn(
-                    "text-xs font-medium",
-                    totalBuyTax > 2500 ? "text-[#FF6B6B]" : "text-[#D0FF00]"
-                  )}
-                >
+                <span className={cn("text-xs font-medium", totalBuyTax > 2500 ? "text-[#FF6B6B]" : "text-[#D0FF00]")}>
                   合计 {totalBuyTax} / 2500
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {TAX_FIELDS.map(({ key, label }) => (
                   <div key={key}>
-                    <label className="mb-1.5 block text-xs text-[#84888C]">{label}</label>
+                    <label className="mb-1.5 block text-xs text-[#9CA3AF]">{label}</label>
                     <input
                       type="text"
                       value={form[key]}
                       onChange={(e) => updateForm(key, e.target.value.replace(/\D/g, ""))}
                       placeholder="100"
-                      className="w-full rounded-lg border border-[#303236] bg-[#15171A] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
+                      className="kimi-input"
                     />
                   </div>
                 ))}
               </div>
             </div>
 
-            <div className="rounded-lg border border-[#23262A] bg-[#0B0D0E] p-4">
+            <div className="rounded-xl border border-[#25282C] bg-[#0A0B0D] p-4">
               <div className="mb-3 flex items-center justify-between">
                 <span className="text-sm font-medium text-white">卖出税率（Basis Points）</span>
-                <span
-                  className={cn(
-                    "text-xs font-medium",
-                    totalSellTax > 2500 ? "text-[#FF6B6B]" : "text-[#D0FF00]"
-                  )}
-                >
+                <span className={cn("text-xs font-medium", totalSellTax > 2500 ? "text-[#FF6B6B]" : "text-[#D0FF00]")}>
                   合计 {totalSellTax} / 2500
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {SELL_TAX_FIELDS.map(({ key, label }) => (
                   <div key={key}>
-                    <label className="mb-1.5 block text-xs text-[#84888C]">{label}</label>
+                    <label className="mb-1.5 block text-xs text-[#9CA3AF]">{label}</label>
                     <input
                       type="text"
                       value={form[key]}
                       onChange={(e) => updateForm(key, e.target.value.replace(/\D/g, ""))}
                       placeholder="100"
-                      className="w-full rounded-lg border border-[#303236] bg-[#15171A] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
+                      className="kimi-input"
                     />
                   </div>
                 ))}
@@ -489,37 +527,35 @@ export default function MemeLaunch() {
 
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <div>
-                <label className="mb-1.5 block text-xs text-[#84888C]">普通白名单地址</label>
+                <label className="mb-1.5 block text-xs text-[#9CA3AF]">普通白名单地址</label>
                 <textarea
                   value={form.ordinaryWhitelist}
                   onChange={(e) => updateForm("ordinaryWhitelist", e.target.value)}
                   placeholder="每行或逗号分隔一个地址"
                   rows={3}
-                  className="w-full resize-none rounded-lg border border-[#303236] bg-[#0B0D0E] p-3 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
+                  className="kimi-input min-h-[80px] resize-none"
                 />
               </div>
-              <div className="space-y-3">
-                <div>
-                  <label className="mb-1.5 block text-xs text-[#84888C]">限制账户地址</label>
-                  <textarea
-                    value={form.limitAccounts}
-                    onChange={(e) => updateForm("limitAccounts", e.target.value)}
-                    placeholder="每行或逗号分隔一个地址"
-                    rows={3}
-                    className="w-full resize-none rounded-lg border border-[#303236] bg-[#0B0D0E] p-3 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
-                  />
-                </div>
+              <div>
+                <label className="mb-1.5 block text-xs text-[#9CA3AF]">限制账户地址</label>
+                <textarea
+                  value={form.limitAccounts}
+                  onChange={(e) => updateForm("limitAccounts", e.target.value)}
+                  placeholder="每行或逗号分隔一个地址"
+                  rows={3}
+                  className="kimi-input min-h-[80px] resize-none"
+                />
               </div>
             </div>
 
             <div>
-              <label className="mb-1.5 block text-xs text-[#84888C]">限制额度（与限制账户一一对应）</label>
+              <label className="mb-1.5 block text-xs text-[#9CA3AF]">限制额度（与限制账户一一对应）</label>
               <textarea
                 value={form.limitQuotas}
                 onChange={(e) => updateForm("limitQuotas", e.target.value)}
                 placeholder="每行或逗号分隔一个额度，数量需与限制账户一致"
                 rows={2}
-                className="w-full resize-none rounded-lg border border-[#303236] bg-[#0B0D0E] p-3 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
+                className="kimi-input min-h-[60px] resize-none"
               />
             </div>
 
@@ -529,7 +565,7 @@ export default function MemeLaunch() {
                   type="checkbox"
                   checked={form.limitModeEnabled}
                   onChange={(e) => updateForm("limitModeEnabled", e.target.checked)}
-                  className="h-4 w-4 rounded border-[#303236] bg-[#0B0D0E] text-[#D0FF00] accent-[#D0FF00]"
+                  className="h-4 w-4 rounded border-[#303236] bg-[#0A0B0D] text-[#D0FF00] accent-[#D0FF00]"
                 />
                 启用限制模式
               </label>
@@ -538,7 +574,7 @@ export default function MemeLaunch() {
                   type="checkbox"
                   checked={form.requestAutoVerify}
                   onChange={(e) => updateForm("requestAutoVerify", e.target.checked)}
-                  className="h-4 w-4 rounded border-[#303236] bg-[#0B0D0E] text-[#D0FF00] accent-[#D0FF00]"
+                  className="h-4 w-4 rounded border-[#303236] bg-[#0A0B0D] text-[#D0FF00] accent-[#D0FF00]"
                 />
                 请求自动验证
               </label>
@@ -547,12 +583,12 @@ export default function MemeLaunch() {
             {txStatus !== "idle" && (
               <div
                 className={cn(
-                  "rounded-lg border p-4",
+                  "rounded-xl border p-4",
                   txStatus === "success"
                     ? "border-[#D0FF00]/30 bg-[#D0FF00]/10"
                     : txStatus === "error"
                       ? "border-[#FF6B6B]/30 bg-[#FF6B6B]/10"
-                      : "border-[#23262A] bg-[#0B0D0E]"
+                      : "border-[#25282C] bg-[#0A0B0D]"
                 )}
               >
                 {txStatus === "pending" && (
@@ -574,24 +610,17 @@ export default function MemeLaunch() {
 
                 {txStatus === "success" && (
                   <div className="space-y-3">
-                    <div className="flex items-center gap-2 text-sm font-medium text-[#D0FF00]">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-[#D0FF00]">
                       <CheckCircle className="h-4 w-4" />
                       <span>代币发射成功</span>
                     </div>
                     {tokenAddress && (
-                      <div className="rounded-lg border border-[#23262A] bg-[#0B0D0E] p-3">
-                        <p className="mb-1 text-xs text-[#84888C]">新代币地址</p>
+                      <div className="rounded-xl border border-[#25282C] bg-[#0A0B0D] p-3">
+                        <p className="mb-1 text-xs text-[#9CA3AF]">新代币地址</p>
                         <div className="flex items-center gap-2">
                           <code className="flex-1 truncate text-sm text-[#D0FF00]">{tokenAddress}</code>
-                          <button
-                            onClick={copyTokenAddress}
-                            className="text-[#9CA3AF] hover:text-white"
-                          >
-                            {copied ? (
-                              <CheckCircle className="h-4 w-4 text-[#D0FF00]" />
-                            ) : (
-                              <Copy className="h-4 w-4" />
-                            )}
+                          <button onClick={copyTokenAddress} className="text-[#9CA3AF] hover:text-white">
+                            {copied ? <CheckCircle className="h-4 w-4 text-[#D0FF00]" /> : <Copy className="h-4 w-4" />}
                           </button>
                           <a
                             href={`https://bscscan.com/token/${tokenAddress}`}
@@ -627,40 +656,35 @@ export default function MemeLaunch() {
             )}
 
             {errorMessage && txStatus === "idle" && (
-              <div className="flex items-start gap-2 rounded-lg border border-[#FF6B6B]/30 bg-[#FF6B6B]/10 p-3 text-sm text-[#FF6B6B]">
+              <div className="flex items-start gap-2 rounded-xl border border-[#FF6B6B]/30 bg-[#FF6B6B]/10 p-3 text-sm text-[#FF6B6B]">
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                 <span>{errorMessage}</span>
               </div>
             )}
           </div>
 
-          <div className="border-t border-[#23262A] p-5">
+          <div className="border-t border-[#25282C] p-5">
             <button
               onClick={handleLaunch}
               disabled={txStatus === "pending" || !canLaunch}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#D0FF00] py-3 text-sm font-semibold text-black transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+              className="kimi-btn-primary w-full disabled:cursor-not-allowed disabled:opacity-40"
             >
               {txStatus === "pending" ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  发射中…
-                </>
+                <Loader2 className="h-4 w-4 animate-spin" />
               ) : !wallet.isConnected ? (
-                <>
-                  <Wallet className="h-4 w-4" />
-                  连接钱包
-                </>
+                <Wallet className="h-4 w-4" />
               ) : !wallet.isBSC ? (
-                <>
-                  <Wallet className="h-4 w-4" />
-                  切换到 BSC
-                </>
+                <Wallet className="h-4 w-4" />
               ) : (
-                <>
-                  <Rocket className="h-4 w-4" />
-                  一键发射（0.005 BNB）
-                </>
+                <Rocket className="h-4 w-4" />
               )}
+              {txStatus === "pending"
+                ? "发射中…"
+                : !wallet.isConnected
+                  ? "连接钱包"
+                  : !wallet.isBSC
+                    ? "切换到 BSC"
+                    : "一键发射（0.005 BNB）"}
             </button>
           </div>
         </div>

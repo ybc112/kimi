@@ -8,7 +8,6 @@ import {
   Check,
   FileCheck,
   Shield,
-  Layers,
   Sparkles,
   AlertCircle,
   Rocket,
@@ -20,8 +19,13 @@ import {
   ShoppingCart,
   Gift,
   Droplets,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Box,
+  Layers,
 } from "lucide-react";
 import { useAppStore } from "@/store";
+import { useContractData } from "@/hooks/useContractData";
 import { DEFAULT_MODEL, sendChatMessage } from "@/lib/kimi";
 import { FLAP_SYSTEM_PROMPT } from "@/lib/flapContext";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -29,11 +33,18 @@ import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { cn } from "@/lib/utils";
 
 const vaultTypes = [
-  { value: "mint-treasury", label: "Mint Treasury", mode: "Mint" },
-  { value: "buyback", label: "Buyback Vault", mode: "Buyback" },
-  { value: "dividend", label: "Dividend Vault", mode: "Dividend" },
-  { value: "lp", label: "LP Vault", mode: "Liquidity" },
-  { value: "custom", label: "Custom", mode: "Custom" },
+  { value: "mint-treasury", label: "Mint Treasury", mode: "Mint", icon: Box },
+  { value: "buyback", label: "Buyback Vault", mode: "Buyback", icon: ShoppingCart },
+  { value: "dividend", label: "Dividend Vault", mode: "Dividend", icon: Gift },
+  { value: "lp", label: "LP Vault", mode: "Liquidity", icon: Droplets },
+  { value: "custom", label: "Custom", mode: "Custom", icon: Layers },
+];
+
+const networks = [
+  { value: "bsc", label: "BNB Smart Chain", chainId: 56 },
+  { value: "eth", label: "Ethereum", chainId: 1 },
+  { value: "arb", label: "Arbitrum One", chainId: 42161 },
+  { value: "base", label: "Base", chainId: 8453 },
 ];
 
 const TEMPLATE_CHECKS = [
@@ -62,6 +73,7 @@ export default function Chat() {
     addLog,
     showToast,
   } = useAppStore();
+  const { recordGenerate } = useContractData();
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState<"generate" | "params" | "example">("generate");
@@ -69,11 +81,13 @@ export default function Chat() {
   const [generatedCode, setGeneratedCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const [params, setParams] = useState({
     projectName: "",
     contractName: "",
     vaultType: "mint-treasury",
+    network: "bsc",
     treasuryReceiver: "",
     mintPrice: "0.2",
     mintAmount: "100000",
@@ -101,7 +115,7 @@ export default function Chat() {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
   }, []);
 
   useEffect(() => {
@@ -114,6 +128,7 @@ export default function Chat() {
 
   const buildUserPrompt = () => {
     const type = vaultTypes.find((v) => v.value === params.vaultType);
+    const net = networks.find((n) => n.value === params.network);
     const isMint = params.vaultType === "mint-treasury";
     return [
       prompt,
@@ -122,6 +137,7 @@ export default function Chat() {
       `项目名称：${params.projectName || "未填写"}`,
       `合约名称：${params.contractName || "未填写"}`,
       `金库类型：${type?.label || "Custom"}`,
+      `目标网络：${net?.label || "BNB Smart Chain"}`,
       `Treasury 接收地址：${params.treasuryReceiver || "部署时指定"}`,
       isMint ? `Mint 价格（BNB）：${params.mintPrice}` : "",
       isMint ? `每次 Mint 份额：${params.mintAmount}` : "",
@@ -160,6 +176,7 @@ export default function Chat() {
       const code = extractCode(content);
       setGeneratedCode(code);
       localStorage.setItem("flap-generated-code", code);
+      recordGenerate();
 
       if (!currentSessionId) {
         addSession({
@@ -248,6 +265,7 @@ export default function Chat() {
       projectName: "",
       contractName: "",
       vaultType: "mint-treasury",
+      network: "bsc",
       treasuryReceiver: "",
       mintPrice: "0.2",
       mintAmount: "100000",
@@ -264,24 +282,22 @@ export default function Chat() {
 
   return (
     <div className="flex min-h-[calc(100vh-7rem)] flex-col gap-4 lg:h-[calc(100vh-3rem)]">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      {/* Page header */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-xl font-bold text-white">金库生成</h2>
-          <p className="text-xs text-[#84888C]">基于 Kimi + Flap Tax Vault V2 规范生成合约代码</p>
+          <h2 className="kimi-page-title">金库生成</h2>
+          <p className="kimi-page-subtitle">Vault AI · 基于 Kimi + Flap Tax Vault V2 规范生成合约代码</p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => handleGenerate(true)}
             disabled={!generatedCode || loading}
-            className="flex items-center justify-center gap-2 rounded-lg border border-[#23262A] bg-[#15171A] px-4 py-2 text-sm text-[#9CA3AF] transition-colors hover:border-[#D0FF00]/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+            className="kimi-btn-secondary disabled:cursor-not-allowed disabled:opacity-40"
           >
             <RefreshCw className="h-4 w-4" />
             重新生成
           </button>
-          <button
-            onClick={handleNewSession}
-            className="flex items-center justify-center gap-2 rounded-lg border border-[#23262A] bg-[#15171A] px-4 py-2 text-sm text-[#9CA3AF] transition-colors hover:border-[#D0FF00]/30 hover:text-white"
-          >
+          <button onClick={handleNewSession} className="kimi-btn-secondary">
             <Plus className="h-4 w-4" />
             新建生成
           </button>
@@ -289,54 +305,70 @@ export default function Chat() {
       </div>
 
       <div className="flex flex-1 flex-col gap-4 lg:flex-row lg:overflow-hidden">
-        {/* History sidebar */}
-        <div className="hidden w-full flex-col rounded-xl border border-[#23262A] bg-[#15171A] lg:flex lg:w-[240px]">
-          <div className="flex items-center justify-between border-b border-[#23262A] px-4 py-3">
-            <h3 className="flex items-center gap-2 text-sm font-medium text-white">
-              <History className="h-4 w-4 text-[#9CA3AF]" />
-              历史会话
-            </h3>
-          </div>
-          <div className="flex-1 overflow-auto p-2">
-            {sessions.length === 0 ? (
-              <p className="px-2 py-4 text-center text-xs text-[#5F656D]">暂无历史会话</p>
-            ) : (
-              <ul className="space-y-1">
-                {sessions.map((session) => (
-                  <li key={session.id}>
-                    <button
-                      onClick={() => setCurrentSession(session.id)}
-                      className={cn(
-                        "group flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs transition-colors",
-                        currentSessionId === session.id
-                          ? "bg-[#D0FF00]/10 text-[#D0FF00]"
-                          : "text-[#9CA3AF] hover:bg-[#23262A] hover:text-white"
-                      )}
-                    >
-                      <span className="truncate pr-2">{session.title}</span>
-                      <Trash2
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          deleteSession(session.id);
-                        }}
-                        className="h-3 w-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
-                      />
-                    </button>
-                  </li>
-                ))}
-              </ul>
+        {/* History sidebar - collapsible */}
+        <div
+          className={cn(
+            "hidden flex-col rounded-2xl border border-[#25282C] bg-[#111215] transition-all duration-300 lg:flex",
+            sidebarOpen ? "w-[280px]" : "w-12"
+          )}
+        >
+          <div className="flex items-center justify-between border-b border-[#25282C] px-3 py-3">
+            {sidebarOpen && (
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
+                <History className="h-4 w-4 text-[#9CA3AF]" />
+                历史会话
+              </h3>
             )}
+            <button
+              onClick={() => setSidebarOpen((v) => !v)}
+              className="rounded-lg p-1.5 text-[#9CA3AF] transition-colors hover:bg-[#1A1D21] hover:text-white"
+              title={sidebarOpen ? "收起" : "展开"}
+            >
+              {sidebarOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+            </button>
           </div>
+          {sidebarOpen && (
+            <div className="flex-1 overflow-auto p-2">
+              {sessions.length === 0 ? (
+                <p className="px-2 py-4 text-center text-xs text-[#6B7280]">暂无历史会话</p>
+              ) : (
+                <ul className="space-y-1">
+                  {sessions.map((session) => (
+                    <li key={session.id}>
+                      <button
+                        onClick={() => setCurrentSession(session.id)}
+                        className={cn(
+                          "group flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs transition-colors",
+                          currentSessionId === session.id
+                            ? "bg-[#D0FF00]/10 text-[#D0FF00]"
+                            : "text-[#9CA3AF] hover:bg-[#1A1D21] hover:text-white"
+                        )}
+                      >
+                        <span className="truncate pr-2">{session.title}</span>
+                        <Trash2
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteSession(session.id);
+                          }}
+                          className="h-3 w-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+                        />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Left: Parameters */}
-        <div className="flex w-full flex-col rounded-xl border border-[#23262A] bg-[#15171A] lg:w-[420px]">
-          <div className="flex items-center justify-between border-b border-[#23262A] px-5 py-4">
+        <div className="flex w-full flex-col rounded-2xl border border-[#25282C] bg-[#111215] lg:w-[420px]">
+          <div className="flex items-center justify-between border-b border-[#25282C] px-5 py-4">
             <h3 className="font-semibold text-white">生成参数</h3>
             <span className="rounded-full bg-[#D0FF00]/10 px-2 py-0.5 text-xs text-[#D0FF00]">可配置 Remix</span>
           </div>
 
-          <div className="flex border-b border-[#23262A]">
+          <div className="flex border-b border-[#25282C]">
             {[
               { key: "generate", label: "生成说明" },
               { key: "params", label: "参数说明" },
@@ -349,7 +381,7 @@ export default function Chat() {
                   "flex-1 border-b-2 py-2.5 text-xs font-medium transition-colors",
                   activeTab === tab.key
                     ? "border-[#D0FF00] text-[#D0FF00]"
-                    : "border-transparent text-[#5F656D] hover:text-[#9CA3AF]"
+                    : "border-transparent text-[#6B7280] hover:text-[#9CA3AF]"
                 )}
               >
                 {tab.label}
@@ -368,16 +400,16 @@ export default function Chat() {
                     onChange={(e) => setPrompt(e.target.value)}
                     placeholder={EXAMPLE_PROMPT}
                     rows={4}
-                    className="w-full resize-none rounded-lg border border-[#303236] bg-[#0B0D0E] p-3 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
+                    className="kimi-input min-h-[100px] resize-none"
                   />
 
                   {/* Quick tags */}
-                  <div className="mt-3 flex flex-wrap gap-2">
+                  <div className="mt-3 grid grid-cols-2 gap-2">
                     {QUICK_TAGS.map((tag) => (
                       <button
                         key={tag.label}
                         onClick={() => applyTag(tag.prompt)}
-                        className="flex items-center gap-1.5 rounded-full border border-[#303236] bg-[#0B0D0E] px-2.5 py-1 text-xs text-[#9CA3AF] transition-colors hover:border-[#D0FF00]/30 hover:text-white"
+                        className="flex items-center gap-1.5 rounded-xl border border-[#25282C] bg-[#0A0B0D] px-2.5 py-2 text-xs text-[#9CA3AF] transition-all hover:border-[#D0FF00]/30 hover:text-white"
                       >
                         <tag.icon className="h-3 w-3" />
                         {tag.label}
@@ -385,80 +417,109 @@ export default function Chat() {
                     ))}
                   </div>
 
-                  <p className="mt-2 text-xs text-[#5F656D]">
+                  <p className="mt-2 text-xs text-[#6B7280]">
                     输入需求后会自动识别：金库类型、接收地址、Mint 价格、每次份额、分成比例、提现/救援/Guardian，并立即生成合规代码。
                   </p>
                 </div>
 
                 <div className="grid gap-4">
                   <div>
-                    <label className="mb-1.5 block text-xs text-[#84888C]">项目名称</label>
+                    <label className="mb-1.5 block text-xs text-[#9CA3AF]">项目名称</label>
                     <input
                       type="text"
                       value={params.projectName}
                       onChange={(e) => updateParam("projectName", e.target.value)}
                       placeholder="Fcodex"
-                      className="w-full rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
+                      className="kimi-input"
                     />
                   </div>
 
                   <div>
-                    <label className="mb-1.5 block text-xs text-[#84888C]">合约名称</label>
+                    <label className="mb-1.5 block text-xs text-[#9CA3AF]">合约名称</label>
                     <input
                       type="text"
                       value={params.contractName}
                       onChange={(e) => updateParam("contractName", e.target.value)}
                       placeholder="FcodexMintVault"
-                      className="w-full rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
+                      className="kimi-input"
                     />
                   </div>
 
+                  {/* Vault type cards */}
                   <div>
-                    <label className="mb-1.5 block text-xs text-[#84888C]">金库类型</label>
-                    <select
-                      value={params.vaultType}
-                      onChange={(e) => updateParam("vaultType", e.target.value)}
-                      className="w-full rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50"
-                    >
+                    <label className="mb-2 block text-xs text-[#9CA3AF]">金库类型</label>
+                    <div className="grid grid-cols-2 gap-2">
                       {vaultTypes.map((t) => (
-                        <option key={t.value} value={t.value} className="bg-[#15171A]">
+                        <button
+                          key={t.value}
+                          onClick={() => updateParam("vaultType", t.value)}
+                          className={cn(
+                            "flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-xs transition-all",
+                            params.vaultType === t.value
+                              ? "border-[#D0FF00]/50 bg-[#D0FF00]/10 text-[#D0FF00]"
+                              : "border-[#25282C] bg-[#0A0B0D] text-[#9CA3AF] hover:border-[#D0FF00]/30 hover:text-white"
+                          )}
+                        >
+                          <t.icon className="h-3.5 w-3.5" />
                           {t.label}
-                        </option>
+                        </button>
                       ))}
-                    </select>
+                    </div>
+                  </div>
+
+                  {/* Network cards */}
+                  <div>
+                    <label className="mb-2 block text-xs text-[#9CA3AF]">目标网络</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {networks.map((n) => (
+                        <button
+                          key={n.value}
+                          onClick={() => updateParam("network", n.value)}
+                          className={cn(
+                            "flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-xs transition-all",
+                            params.network === n.value
+                              ? "border-[#D0FF00]/50 bg-[#D0FF00]/10 text-[#D0FF00]"
+                              : "border-[#25282C] bg-[#0A0B0D] text-[#9CA3AF] hover:border-[#D0FF00]/30 hover:text-white"
+                          )}
+                        >
+                          <span className="h-2 w-2 rounded-full bg-current" />
+                          {n.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
                   <div>
-                    <label className="mb-1.5 block text-xs text-[#84888C]">接收次数钱包</label>
+                    <label className="mb-1.5 block text-xs text-[#9CA3AF]">接收次数钱包</label>
                     <input
                       type="text"
                       value={params.treasuryReceiver}
                       onChange={(e) => updateParam("treasuryReceiver", e.target.value)}
                       placeholder="0x..."
-                      className="w-full rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
+                      className="kimi-input"
                     />
                   </div>
 
                   {params.vaultType === "mint-treasury" && (
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div>
-                        <label className="mb-1.5 block text-xs text-[#84888C]">Mint 价格 BNB</label>
+                        <label className="mb-1.5 block text-xs text-[#9CA3AF]">Mint 价格 BNB</label>
                         <input
                           type="text"
                           value={params.mintPrice}
                           onChange={(e) => updateParam("mintPrice", e.target.value)}
                           placeholder="0.2"
-                          className="w-full rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
+                          className="kimi-input"
                         />
                       </div>
                       <div>
-                        <label className="mb-1.5 block text-xs text-[#84888C]">每次 Mint 份额</label>
+                        <label className="mb-1.5 block text-xs text-[#9CA3AF]">每次 Mint 份额</label>
                         <input
                           type="text"
                           value={params.mintAmount}
                           onChange={(e) => updateParam("mintAmount", e.target.value)}
                           placeholder="100000"
-                          className="w-full rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
+                          className="kimi-input"
                         />
                       </div>
                     </div>
@@ -466,23 +527,23 @@ export default function Chat() {
 
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
-                      <label className="mb-1.5 block text-xs text-[#84888C]">Treasury split %</label>
+                      <label className="mb-1.5 block text-xs text-[#9CA3AF]">Treasury split %</label>
                       <input
                         type="text"
                         value={params.treasurySplit}
                         onChange={(e) => updateParam("treasurySplit", e.target.value)}
                         placeholder="80"
-                        className="w-full rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
+                        className="kimi-input"
                       />
                     </div>
                     <div>
-                      <label className="mb-1.5 block text-xs text-[#84888C]">Second wallet</label>
+                      <label className="mb-1.5 block text-xs text-[#9CA3AF]">Second wallet</label>
                       <input
                         type="text"
                         value={params.secondWallet}
                         onChange={(e) => updateParam("secondWallet", e.target.value)}
                         placeholder="0x..."
-                        className="w-full rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#D0FF00]/50 placeholder:text-[#5F656D]"
+                        className="kimi-input"
                       />
                     </div>
                   </div>
@@ -491,7 +552,7 @@ export default function Chat() {
                 <button
                   onClick={() => handleGenerate(false)}
                   disabled={!prompt.trim() || loading}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#D0FF00] py-2.5 text-sm font-semibold text-black transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="kimi-btn-primary w-full disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {loading ? (
                     <>
@@ -519,6 +580,7 @@ export default function Chat() {
                   <li>项目名称：用于注释和标识，不影响合约逻辑。</li>
                   <li>合约名称：生成的 Solidity contract 名称。</li>
                   <li>金库类型：决定 Vault 的核心机制（Mint、Buyback、Dividend、LP）。</li>
+                  <li>目标网络：合约将部署到的链。</li>
                   <li>接收地址：税收或 Mint 资金的接收钱包。</li>
                   <li>Mint 价格：每次 Mint 需要支付的 BNB 数量。</li>
                   <li>每次 Mint 份额：用户每次 Mint 获得的代币数量。</li>
@@ -531,9 +593,7 @@ export default function Chat() {
             {activeTab === "example" && (
               <div className="space-y-4 text-sm text-[#9CA3AF]">
                 <p>示例需求：</p>
-                <div className="rounded-lg border border-[#303236] bg-[#0B0D0E] p-3 text-[#D0FF00]">
-                  {EXAMPLE_PROMPT}
-                </div>
+                <div className="rounded-xl border border-[#25282C] bg-[#0A0B0D] p-3 text-[#D0FF00]">{EXAMPLE_PROMPT}</div>
                 <p>填写参数后点击「生成代码」，Kimi 会根据 Flap V2 规范生成完整合约。</p>
               </div>
             )}
@@ -541,14 +601,14 @@ export default function Chat() {
         </div>
 
         {/* Right: Generated Code */}
-        <div className="flex flex-col rounded-xl border border-[#23262A] bg-[#15171A] lg:flex-1 lg:min-h-0">
-          <div className="flex flex-col gap-3 border-b border-[#23262A] px-4 py-4 sm:flex-row sm:items-center sm:justify-between lg:px-5">
+        <div className="flex flex-col rounded-2xl border border-[#25282C] bg-[#111215] lg:flex-1 lg:min-h-0">
+          <div className="flex flex-col gap-3 border-b border-[#25282C] px-4 py-4 sm:flex-row sm:items-center sm:justify-between lg:px-5">
             <h3 className="font-semibold text-white">生成代码</h3>
             <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={handleCopy}
                 disabled={!generatedCode}
-                className="flex items-center justify-center gap-1.5 rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-1.5 text-xs text-[#9CA3AF] transition-colors hover:border-[#D0FF00]/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                className="kimi-btn-secondary py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
                 复制
@@ -556,7 +616,7 @@ export default function Chat() {
               <button
                 onClick={handleDownload}
                 disabled={!generatedCode}
-                className="flex items-center justify-center gap-1.5 rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-1.5 text-xs text-[#9CA3AF] transition-colors hover:border-[#D0FF00]/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                className="kimi-btn-secondary py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Download className="h-3.5 w-3.5" />
                 下载 .sol
@@ -564,15 +624,15 @@ export default function Chat() {
               <button
                 onClick={handleSaveLocal}
                 disabled={!generatedCode}
-                className="flex items-center justify-center gap-1.5 rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-1.5 text-xs text-[#9CA3AF] transition-colors hover:border-[#D0FF00]/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                className="kimi-btn-secondary py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Save className="h-3.5 w-3.5" />
-                保存到本地
+                保存
               </button>
               <button
                 onClick={handleSelectAll}
                 disabled={!generatedCode}
-                className="flex items-center justify-center gap-1.5 rounded-lg border border-[#303236] bg-[#0B0D0E] px-3 py-1.5 text-xs text-[#9CA3AF] transition-colors hover:border-[#D0FF00]/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                className="kimi-btn-secondary py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Layers className="h-3.5 w-3.5" />
                 全选
@@ -580,7 +640,7 @@ export default function Chat() {
               <button
                 onClick={() => navigate("/deploy")}
                 disabled={!generatedCode}
-                className="flex items-center justify-center gap-1.5 rounded-lg border border-[#D0FF00]/30 bg-[#D0FF00]/10 px-3 py-1.5 text-xs font-medium text-[#D0FF00] transition-colors hover:bg-[#D0FF00]/20 disabled:cursor-not-allowed disabled:opacity-40"
+                className="kimi-btn-primary py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Rocket className="h-3.5 w-3.5" />
                 部署
@@ -591,9 +651,12 @@ export default function Chat() {
           <div className="flex flex-col lg:flex-1 lg:flex-row lg:overflow-hidden">
             <div className="min-h-[360px] flex-1 overflow-auto p-0 lg:min-h-0">
               {!generatedCode ? (
-                <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-[#5F656D]">
-                  <Sparkles className="h-10 w-10 text-[#303236]" />
+                <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-[#6B7280]">
+                  <div className="kimi-empty-icon">
+                    <Sparkles className="h-7 w-7" />
+                  </div>
                   <p className="text-sm">在上方填写参数并点击「生成代码」</p>
+                  <p className="text-xs text-[#6B7280]">AI 将根据 Flap Tax Vault V2 规范生成合约</p>
                 </div>
               ) : (
                 <div id="generated-code" className="h-full min-w-[600px]">
@@ -604,7 +667,7 @@ export default function Chat() {
                       margin: 0,
                       padding: "1.25rem",
                       fontSize: "0.8125rem",
-                      lineHeight: 1.6,
+                      lineHeight: 1.7,
                       background: "transparent",
                       minHeight: "100%",
                     }}
@@ -616,15 +679,15 @@ export default function Chat() {
             </div>
 
             {/* Template Check Sidebar */}
-            <div className="w-full border-t border-[#23262A] bg-[#111215] p-4 lg:w-[260px] lg:border-l lg:border-t-0">
+            <div className="w-full border-t border-[#25282C] bg-[#0A0B0D] p-4 lg:w-[260px] lg:border-l lg:border-t-0">
               <div className="mb-4 flex items-center gap-2">
                 <FileCheck className="h-4 w-4 text-[#D0FF00]" />
                 <h4 className="text-sm font-semibold text-white">模板检查</h4>
               </div>
 
-              <div className="mb-4 rounded-lg border border-[#23262A] bg-[#0B0D0E] p-3">
+              <div className="mb-4 rounded-xl border border-[#25282C] bg-[#111215] p-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-[#84888C]">Required hooks</span>
+                  <span className="text-xs text-[#9CA3AF]">Required hooks</span>
                   <span className="text-sm font-bold text-[#D0FF00]">3/3</span>
                 </div>
               </div>
@@ -633,18 +696,18 @@ export default function Chat() {
                 {TEMPLATE_CHECKS.map((check, index) => (
                   <div
                     key={index}
-                    className="flex items-center justify-between rounded-lg border border-[#23262A] bg-[#0B0D0E] px-3 py-2"
+                    className="flex items-center justify-between rounded-xl border border-[#25282C] bg-[#111215] px-3 py-2"
                   >
                     <div className="flex items-center gap-2">
                       <Check className="h-3.5 w-3.5 text-[#2EDEDB]" />
                       <span className="text-xs text-[#9CA3AF]">{check.label}</span>
                     </div>
-                    <span className="text-[10px] uppercase text-[#5F656D]">{check.status}</span>
+                    <span className="text-[10px] uppercase text-[#6B7280]">{check.status}</span>
                   </div>
                 ))}
               </div>
 
-              <div className="mb-4 rounded-lg border border-[#23262A] bg-[#0B0D0E] p-3">
+              <div className="mb-4 rounded-xl border border-[#25282C] bg-[#111215] p-3">
                 <div className="mb-2 flex items-center gap-2">
                   <Shield className="h-3.5 w-3.5 text-[#FF6B6B]" />
                   <span className="text-xs font-medium text-white">Guards</span>
@@ -652,19 +715,19 @@ export default function Chat() {
                 <div className="text-2xl font-bold text-white">3</div>
               </div>
 
-              <div className="mb-4 rounded-lg border border-[#23262A] bg-[#0B0D0E] p-3">
-                <div className="mb-2 text-xs text-[#84888C]">Mode</div>
+              <div className="mb-4 rounded-xl border border-[#25282C] bg-[#111215] p-3">
+                <div className="mb-2 text-xs text-[#9CA3AF]">Mode</div>
                 <div className="inline-flex items-center gap-2 rounded-full bg-[#D0FF00]/10 px-2.5 py-1 text-xs text-[#D0FF00]">
                   {selectedType?.mode || "Custom"}
                 </div>
               </div>
 
-              <div className="rounded-lg border border-[#303236] bg-[#15171A] p-3">
+              <div className="rounded-xl border border-[#25282C] bg-[#111215] p-3">
                 <div className="mb-2 flex items-start gap-2">
-                  <AlertCircle className="mt-0.5 h-3.5 w-3.5 text-[#84888C]" />
+                  <AlertCircle className="mt-0.5 h-3.5 w-3.5 text-[#9CA3AF]" />
                   <span className="text-xs font-medium text-white">Flap 规范提示</span>
                 </div>
-                <p className="text-xs leading-relaxed text-[#5F656D]">
+                <p className="text-xs leading-relaxed text-[#6B7280]">
                   模板检查基于 Flap Tax Vault V2 规范。生成代码后请人工复核 Guardian、TWAP、Buyback
                   触发条件等关键逻辑，上线前务必审计。
                 </p>

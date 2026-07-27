@@ -23,6 +23,7 @@ export interface WalletState {
   provider: ethers.BrowserProvider | null;
   isConnected: boolean;
   isBSC: boolean;
+  balance: string;
 }
 
 export function useWallet() {
@@ -33,6 +34,7 @@ export function useWallet() {
     provider: null,
     isConnected: false,
     isBSC: false,
+    balance: "0",
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,6 +49,11 @@ export function useWallet() {
       const accounts = (await provider.listAccounts()) as ethers.JsonRpcSigner[];
       const account = accounts[0]?.address ?? null;
       const signer = account ? await provider.getSigner() : null;
+      let balance = "0";
+      if (account) {
+        const raw = await provider.getBalance(account);
+        balance = ethers.formatEther(raw);
+      }
 
       if (!mounted.current) return;
       setState({
@@ -56,6 +63,7 @@ export function useWallet() {
         provider,
         isConnected: Boolean(account),
         isBSC: chainId === BSC_CHAIN_ID,
+        balance,
       });
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
@@ -91,6 +99,7 @@ export function useWallet() {
       provider: null,
       isConnected: false,
       isBSC: false,
+      balance: "0",
     });
     setError(null);
   }, []);

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   BookOpen,
@@ -17,6 +17,8 @@ import {
 import { cn } from "@/lib/utils";
 import { useWallet } from "@/hooks/useWallet";
 import { useAppStore } from "@/store";
+import { useIssuedTokens } from "@/hooks/useIssuedTokens";
+import { useContractData } from "@/hooks/useContractData";
 import { ethers } from "ethers";
 import {
   SNOWBALL_LAUNCHPAD_ADDRESS,
@@ -25,6 +27,8 @@ import {
   BSC_USDT_ADDRESS,
   buildCreateTokenParams,
 } from "@/lib/contracts/snowball";
+
+const CHECKLIST_STORAGE_KEY = "kimi-flap-launch-checklist";
 
 const TABS = [
   { key: "guide", label: "发币指南", icon: BookOpen },
@@ -84,12 +88,26 @@ const CHECKLIST = [
   { id: "wallet", label: "已连接钱包并切换到 BSC" },
 ];
 
+function readChecklist(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(CHECKLIST_STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return {};
+}
+
+function saveChecklist(state: Record<string, boolean>) {
+  localStorage.setItem(CHECKLIST_STORAGE_KEY, JSON.stringify(state));
+}
+
 export default function FlapLaunch() {
   const navigate = useNavigate();
   const wallet = useWallet();
-  const { addLog, showToast, addIssuedToken } = useAppStore();
+  const { addLog, showToast } = useAppStore();
+  const { addToken } = useIssuedTokens();
+  const { recordLaunch } = useContractData();
   const [activeTab, setActiveTab] = useState<TabKey>("guide");
-  const [checked, setChecked] = useState<Record<string, boolean>>({});
+  const [checked, setChecked] = useState<Record<string, boolean>>(() => readChecklist());
 
   const [form, setForm] = useState({
     name: "",
@@ -100,8 +118,15 @@ export default function FlapLaunch() {
   const [launching, setLaunching] = useState(false);
   const [result, setResult] = useState<{ address: string; txHash: string } | null>(null);
 
+  useEffect(() => {
+    saveChecklist(checked);
+  }, [checked]);
+
   const toggleCheck = (id: string) => {
-    setChecked((prev) => ({ ...prev, [id]: !prev[id] }));
+    setChecked((prev) => {
+      const next = { ...prev, [id]: !prev[id] };
+      return next;
+    });
   };
 
   const handleInternalLaunch = async () => {
@@ -160,16 +185,19 @@ export default function FlapLaunch() {
       const tokenAddress = (event?.args?.token as string) || "";
       setResult({ address: tokenAddress, txHash: tx.hash });
 
-      addIssuedToken({
+      addToken({
         name: form.name,
         symbol: form.symbol,
         address: tokenAddress,
+        deployer: wallet.account || "",
         network: "BNB Smart Chain",
-        status: "active",
+        chainId: 56,
         txHash: tx.hash,
-        type: "token",
-        source: "flap-launch",
+        status: "success",
+        totalSupply: form.supply,
+        type: "flap",
       });
+      recordLaunch(form.name);
 
       addLog({ type: "success", message: "站内一键发币成功", detail: tokenAddress });
       showToast({ type: "success", message: "代币创建成功" });
