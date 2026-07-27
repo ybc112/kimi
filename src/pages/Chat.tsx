@@ -362,7 +362,7 @@ export default function Chat() {
         </div>
 
         {/* Left: Parameters */}
-        <div className="flex w-full flex-col rounded-2xl border border-[#25282C] bg-[#111215] lg:w-[420px] xl:w-[460px] 2xl:w-[520px]">
+        <div className="flex w-full flex-col rounded-2xl border border-[#25282C] bg-[#111215] lg:w-[480px] xl:w-[540px] 2xl:w-[620px]">
           <div className="flex items-center justify-between border-b border-[#25282C] px-4 py-3">
             <h3 className="font-semibold text-white">生成参数</h3>
             <span className="rounded-full bg-[#D0FF00]/10 px-2.5 py-0.5 text-xs text-[#D0FF00]">可配置 Remix</span>
@@ -390,42 +390,42 @@ export default function Chat() {
             ))}
           </div>
 
-          <div className="p-4 lg:flex-1 lg:overflow-auto">
+          <div className="p-5 lg:flex-1 lg:overflow-auto">
             {activeTab === "generate" && (
-              <div className="space-y-4">
+              <div className="space-y-5">
                 <div>
-                  <label className="mb-1.5 block text-xs font-medium text-[#9CA3AF]">需求描述</label>
+                  <label className="mb-2 block text-xs font-medium text-[#9CA3AF]">需求描述</label>
                   <textarea
                     ref={textareaRef}
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
                     placeholder={EXAMPLE_PROMPT}
                     rows={3}
-                    className="kimi-input min-h-[80px] resize-none"
+                    className="kimi-input min-h-[88px] resize-none"
                   />
 
                   {/* Quick tags */}
-                  <div className="mt-2 grid grid-cols-4 gap-2">
+                  <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
                     {QUICK_TAGS.map((tag) => (
                       <button
                         key={tag.label}
                         onClick={() => applyTag(tag.prompt)}
-                        className="flex flex-col items-center gap-1 rounded-lg border border-[#25282C] bg-[#0A0B0D] px-1 py-2 text-[10px] text-[#9CA3AF] transition-all hover:border-[#D0FF00]/30 hover:text-white"
+                        className="flex flex-col items-center gap-1.5 rounded-lg border border-[#25282C] bg-[#0A0B0D] px-2 py-2.5 text-[11px] text-[#9CA3AF] transition-all hover:border-[#D0FF00]/30 hover:text-white"
                       >
-                        <tag.icon className="h-3 w-3" />
+                        <tag.icon className="h-3.5 w-3.5" />
                         {tag.label}
                       </button>
                     ))}
                   </div>
 
-                  <p className="text-xs text-[#6B7280]">
+                  <p className="mt-2 text-xs text-[#6B7280]">
                     输入需求后自动识别参数并生成 Flap V2 合规代码。
                   </p>
                 </div>
 
-                <div className="grid gap-3">
+                <div className="grid gap-4">
                   <div>
-                    <label className="mb-1.5 block text-xs text-[#9CA3AF]">项目名称</label>
+                    <label className="mb-2 block text-xs text-[#9CA3AF]">项目名称</label>
                     <input
                       type="text"
                       value={params.projectName}
@@ -436,7 +436,7 @@ export default function Chat() {
                   </div>
 
                   <div>
-                    <label className="mb-1.5 block text-xs text-[#9CA3AF]">合约名称</label>
+                    <label className="mb-2 block text-xs text-[#9CA3AF]">合约名称</label>
                     <input
                       type="text"
                       value={params.contractName}
@@ -449,20 +449,20 @@ export default function Chat() {
                   {/* Vault type cards */}
                   <div>
                     <label className="mb-2 block text-xs text-[#9CA3AF]">金库类型</label>
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-3 gap-3">
                       {vaultTypes.map((t) => (
                         <button
                           key={t.value}
                           onClick={() => updateParam("vaultType", t.value)}
                           className={cn(
-                            "flex flex-col items-center gap-1.5 rounded-xl border p-2.5 text-center transition-all",
+                            "flex flex-col items-center gap-2 rounded-xl border p-3 text-center transition-all",
                             params.vaultType === t.value
                               ? "border-[#D0FF00]/50 bg-[#D0FF00]/10 text-[#D0FF00]"
                               : "border-[#25282C] bg-[#0A0B0D] text-[#9CA3AF] hover:border-[#D0FF00]/30 hover:text-white"
                           )}
                         >
                           <t.icon className="h-4 w-4" />
-                          <span className="text-[11px] font-medium leading-tight">{t.mode}</span>
+                          <span className="text-xs font-medium leading-tight">{t.mode}</span>
                         </button>
                       ))}
                     </div>
@@ -471,13 +471,13 @@ export default function Chat() {
                   {/* Network cards */}
                   <div>
                     <label className="mb-2 block text-xs text-[#9CA3AF]">目标网络</label>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-2 gap-3">
                       {networks.map((n) => (
                         <button
                           key={n.value}
                           onClick={() => updateParam("network", n.value)}
                           className={cn(
-                            "flex flex-col items-start gap-1 rounded-xl border px-3 py-2.5 text-left text-xs transition-all",
+                            "flex flex-col items-start gap-1.5 rounded-xl border px-3 py-3 text-left text-xs transition-all",
                             params.network === n.value
                               ? "border-[#D0FF00]/50 bg-[#D0FF00]/10 text-[#D0FF00]"
                               : "border-[#25282C] bg-[#0A0B0D] text-[#9CA3AF] hover:border-[#D0FF00]/30 hover:text-white"
@@ -491,7 +491,7 @@ export default function Chat() {
                   </div>
 
                   <div>
-                    <label className="mb-1.5 block text-xs text-[#9CA3AF]">接收地址（税收 / Mint 资金）</label>
+                    <label className="mb-2 block text-xs text-[#9CA3AF]">接收地址（税收 / Mint 资金）</label>
                     <input
                       type="text"
                       value={params.treasuryReceiver}
@@ -502,9 +502,9 @@ export default function Chat() {
                   </div>
 
                   {params.vaultType === "mint-treasury" && (
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                       <div>
-                        <label className="mb-1.5 block text-xs text-[#9CA3AF]">Mint 价格 BNB</label>
+                        <label className="mb-2 block text-xs text-[#9CA3AF]">Mint 价格 BNB</label>
                         <input
                           type="text"
                           value={params.mintPrice}
@@ -514,7 +514,7 @@ export default function Chat() {
                         />
                       </div>
                       <div>
-                        <label className="mb-1.5 block text-xs text-[#9CA3AF]">每次 Mint 份额</label>
+                        <label className="mb-2 block text-xs text-[#9CA3AF]">每次 Mint 份额</label>
                         <input
                           type="text"
                           value={params.mintAmount}
@@ -526,9 +526,9 @@ export default function Chat() {
                     </div>
                   )}
 
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
-                      <label className="mb-1.5 block text-xs text-[#9CA3AF]">Treasury 分成比例 (%)</label>
+                      <label className="mb-2 block text-xs text-[#9CA3AF]">Treasury 分成比例 (%)</label>
                       <input
                         type="text"
                         value={params.treasurySplit}
@@ -538,7 +538,7 @@ export default function Chat() {
                       />
                     </div>
                     <div>
-                      <label className="mb-1.5 block text-xs text-[#9CA3AF]">二级钱包地址</label>
+                      <label className="mb-2 block text-xs text-[#9CA3AF]">二级钱包地址</label>
                       <input
                         type="text"
                         value={params.secondWallet}
@@ -575,9 +575,9 @@ export default function Chat() {
             )}
 
             {activeTab === "params" && (
-              <div className="space-y-4 text-sm text-[#9CA3AF]">
+              <div className="space-y-5 text-sm text-[#9CA3AF]">
                 <p>参数说明：</p>
-                <ul className="list-disc space-y-2 pl-4">
+                <ul className="list-disc space-y-3 pl-4">
                   <li>项目名称：用于注释和标识，不影响合约逻辑。</li>
                   <li>合约名称：生成的 Solidity contract 名称。</li>
                   <li>金库类型：决定 Vault 的核心机制（Mint、Buyback、Dividend、LP）。</li>
@@ -592,9 +592,9 @@ export default function Chat() {
             )}
 
             {activeTab === "example" && (
-              <div className="space-y-4 text-sm text-[#9CA3AF]">
+              <div className="space-y-5 text-sm text-[#9CA3AF]">
                 <p>示例需求：</p>
-                <div className="rounded-xl border border-[#25282C] bg-[#0A0B0D] p-3 text-[#D0FF00]">{EXAMPLE_PROMPT}</div>
+                <div className="rounded-xl border border-[#25282C] bg-[#0A0B0D] p-4 text-[#D0FF00]">{EXAMPLE_PROMPT}</div>
                 <p>填写参数后点击「生成代码」，Kimi 会根据 Flap V2 规范生成完整合约。</p>
               </div>
             )}

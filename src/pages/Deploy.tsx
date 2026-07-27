@@ -28,7 +28,10 @@ import { cn } from "@/lib/utils";
 import {
   deployBytecode,
   deployViaFactory,
+  burnKimiTokens,
   DEPLOY_FACTORY_ADDRESS,
+  KIMI_TOKEN_ADDRESS,
+  DEPLOY_BURN_AMOUNT,
   getExplorerUrl,
   parseConstructorArgs,
   CHAIN_IDS,
@@ -52,6 +55,7 @@ const DEPLOY_MODES = [
 type DeployMode = (typeof DEPLOY_MODES)[number]["value"];
 
 const BURN_AMOUNT = "20,000";
+const isKimiConfigured = KIMI_TOKEN_ADDRESS !== "0x0000000000000000000000000000000000000000";
 
 export default function Deploy() {
   const { addLog, showToast } = useAppStore();
@@ -244,8 +248,30 @@ export default function Deploy() {
       await wallet.switchToBSC();
       return;
     }
-    addLog({ type: "info", message: "开始销毁部署费并上链", detail: `销毁 ${BURN_AMOUNT} KIMI（概念）并调用部署流程` });
-    await runDeploy();
+    if (!isKimiConfigured) {
+      setErrorMessage("KIMI 代币地址尚未配置，无法执行真实销毁。请使用「快速部署」或在代码中配置 KIMI_TOKEN_ADDRESS。");
+      return;
+    }
+
+    setStatus("pending");
+    setErrorMessage("");
+    setTxHash("");
+    setContractAddress("");
+    addLog({ type: "info", message: "开始销毁部署费", detail: `销毁 ${BURN_AMOUNT} KIMI 后部署合约` });
+
+    try {
+      if (!wallet.signer) throw new Error("钱包未连接");
+      const burnResult = await burnKimiTokens({ signer: wallet.signer, amount: DEPLOY_BURN_AMOUNT });
+      addLog({ type: "success", message: "KIMI 销毁成功", detail: `tx: ${burnResult.txHash}` });
+      showToast({ type: "success", message: "销毁成功，开始部署" });
+      await runDeploy();
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      setErrorMessage(detail);
+      setStatus("error");
+      addLog({ type: "error", message: "KIMI 销毁失败", detail });
+      showToast({ type: "error", message: "销毁失败" });
+    }
   };
 
   const Accordion = ({ id, title, icon: Icon, children }: { id: string; title: string; icon: React.ElementType; children: React.ReactNode }) => (
@@ -537,18 +563,33 @@ export default function Deploy() {
               <p className="mt-1 text-3xl font-bold text-[#FF6B6B]">{BURN_AMOUNT} KIMI</p>
             </div>
 
-            <div className="mb-4 flex items-start gap-2 rounded-xl border border-[#FF6B6B]/30 bg-[#FF6B6B]/10 p-3 text-xs text-[#FF6B6B]">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>代币销毁是不可撤销的操作，请确认后再继续。</span>
-            </div>
+            {!isKimiConfigured && (
+              <div className="mb-4 flex items-start gap-2 rounded-xl border border-[#FF6B6B]/30 bg-[#FF6B6B]/10 p-3 text-xs text-[#FF6B6B]">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>KIMI 代币地址尚未配置，当前「销毁并部署」不可用。请使用下方的「快速部署」，或提供 KIMI 合约地址后重新配置。</span>
+              </div>
+            )}
+
+            {isKimiConfigured && (
+              <div className="mb-4 flex items-start gap-2 rounded-xl border border-[#FF6B6B]/30 bg-[#FF6B6B]/10 p-3 text-xs text-[#FF6B6B]">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>代币销毁是不可撤销的操作，将真实转出 {BURN_AMOUNT} KIMI 到销毁地址，请确认后再继续。</span>
+              </div>
+            )}
 
             <button
               onClick={handleBurnAndDeploy}
-              disabled={status === "pending"}
+              disabled={status === "pending" || !isKimiConfigured}
               className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#FF6B6B]/30 bg-[#FF6B6B]/10 py-3 text-sm font-semibold text-[#FF6B6B] transition-all hover:bg-[#FF6B6B]/20 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {status === "pending" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Flame className="h-4 w-4" />}
-              {!wallet.isConnected ? "连接钱包并销毁部署" : isWrongNetwork ? "切换网络并部署" : "确认销毁并部署"}
+              {!isKimiConfigured
+                ? "KIMI 地址未配置"
+                : !wallet.isConnected
+                  ? "连接钱包并销毁部署"
+                  : isWrongNetwork
+                    ? "切换网络并部署"
+                    : "确认销毁并部署"}
             </button>
           </div>
 

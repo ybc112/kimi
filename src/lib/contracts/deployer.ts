@@ -4,6 +4,16 @@ import { ethers } from "ethers";
 // 如需重新部署，可运行 多零直发发射台/scripts/deploy-snowball-launchpad.js
 export const DEPLOY_FACTORY_ADDRESS: string = "0x972D488F3e952b11a13b96C0aCCECbA9855A97EC";
 
+// KIMI 代币合约地址（BSC mainnet）
+// TODO: 请替换为真实 KIMI 代币地址
+export const KIMI_TOKEN_ADDRESS: string = "0x0000000000000000000000000000000000000000";
+
+// 销毁地址：转入此地址即视为销毁
+export const BURN_ADDRESS: string = "0x000000000000000000000000000000000000dEaD";
+
+// 部署费：20,000 KIMI，18 位小数
+export const DEPLOY_BURN_AMOUNT: bigint = 20000n * 10n ** 18n;
+
 export const BSC_RPC_URL = "https://bsc-dataseed.binance.org/";
 export const BSC_CHAIN_ID = 56;
 export const BSC_EXPLORER = "https://bscscan.com";
@@ -93,6 +103,25 @@ export async function deployViaFactory(params: {
 export function getExplorerUrl(network: string, path: string) {
   const base = EXPLORERS[network] ?? EXPLORERS.bsc;
   return `${base}${path}`;
+}
+
+// ERC20 最小 ABI
+const ERC20_ABI = [
+  "function transfer(address to, uint256 amount) external returns (bool)",
+  "function balanceOf(address account) external view returns (uint256)",
+  "function decimals() external view returns (uint8)",
+];
+
+// 真实销毁 KIMI 代币：从用户钱包转入销毁地址
+export async function burnKimiTokens(params: { signer: ethers.Signer; amount?: bigint }) {
+  const { signer, amount = DEPLOY_BURN_AMOUNT } = params;
+  if (KIMI_TOKEN_ADDRESS === ethers.ZeroAddress) {
+    throw new Error("KIMI 代币地址尚未配置，请在 src/lib/contracts/deployer.ts 中设置 KIMI_TOKEN_ADDRESS");
+  }
+  const contract = new ethers.Contract(KIMI_TOKEN_ADDRESS, ERC20_ABI, signer);
+  const tx = await contract.transfer(BURN_ADDRESS, amount);
+  const receipt = await tx.wait();
+  return { txHash: tx.hash, receipt };
 }
 
 export function parseConstructorArgs(input: string): unknown[] {
