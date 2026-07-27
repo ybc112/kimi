@@ -130,8 +130,12 @@ export default function FlapLaunch() {
   };
 
   const handleInternalLaunch = async () => {
-    if (!wallet.isConnected || !wallet.signer) {
+    if (!wallet.isConnected || !wallet.signer || !wallet.account) {
       await wallet.connectWallet();
+      return;
+    }
+    if (!ethers.isAddress(wallet.account)) {
+      showToast({ type: "error", message: "钱包地址无效，请重新连接" });
       return;
     }
     if (!wallet.isBSC) {
