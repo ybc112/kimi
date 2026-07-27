@@ -72,7 +72,9 @@ function readStats(): TodayStats {
   try {
     const raw = localStorage.getItem(STATS_KEY);
     if (raw) return JSON.parse(raw);
-  } catch {}
+  } catch {
+    // 忽略损坏的本地缓存并回退到默认值。
+  }
   return { generated: 0, deployed: 0, savedHours: 0 };
 }
 
@@ -80,7 +82,9 @@ function readActivities(): ActivityItem[] {
   try {
     const raw = localStorage.getItem(ACTIVITIES_KEY);
     if (raw) return JSON.parse(raw);
-  } catch {}
+  } catch {
+    // 忽略损坏的本地缓存并回退到默认值。
+  }
   return [];
 }
 
@@ -88,7 +92,9 @@ function readTrending(): TrendingItem[] {
   try {
     const raw = localStorage.getItem(TRENDING_KEY);
     if (raw) return JSON.parse(raw);
-  } catch {}
+  } catch {
+    // 忽略损坏的本地缓存并回退到默认值。
+  }
   return [];
 }
 

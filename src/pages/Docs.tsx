@@ -11,8 +11,6 @@ import {
   BookOpen,
   ArrowRight,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
-
 const rules = [
   {
     id: "001",

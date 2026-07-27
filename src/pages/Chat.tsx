@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Send,
@@ -47,12 +47,6 @@ const networks = [
   { value: "base", label: "Base", chainId: 8453 },
 ];
 
-const TEMPLATE_CHECKS = [
-  { label: "VaultBaseV2 继承", status: "required", pass: true },
-  { label: "guardian 权限控制", status: "required", pass: true },
-  { label: "receive() gas 限制", status: "required", pass: true },
-];
-
 const EXAMPLE_PROMPT = `例如：帮我写一个燃烧池税金库，金库合约将 0.2 BNB 自动回购销毁。`;
 
 const QUICK_TAGS = [
@@ -97,7 +91,33 @@ export default function Chat() {
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const currentSession = sessions.find((s) => s.id === currentSessionId) || null;
+  const currentSession = useMemo(
+    () => sessions.find((session) => session.id === currentSessionId) || null,
+    [sessions, currentSessionId]
+  );
+
+  const templateChecks = useMemo(
+    () => [
+      {
+        label: "VaultBaseV2 继承",
+        status: "required",
+        pass: /\bis\s+[^{};]*\bVaultBaseV2\b/.test(generatedCode),
+      },
+      {
+        label: "guardian 权限控制",
+        status: "required",
+        pass: /\bguardian\b/i.test(generatedCode) && /\bonly(?:Flap|Factory)?Guardian\b/.test(generatedCode),
+      },
+      {
+        label: "receive() 入口",
+        status: "required",
+        pass: /receive\s*\(\s*\)\s*external\s+payable/.test(generatedCode),
+      },
+    ],
+    [generatedCode]
+  );
+  const passedTemplateChecks = templateChecks.filter((check) => check.pass).length;
+  const guardCount = (generatedCode.match(/\b(?:require|revert)\s*\(/g) || []).length;
 
   useEffect(() => {
     if (currentSession) {
@@ -109,7 +129,7 @@ export default function Chat() {
       setGeneratedCode("");
       setPrompt("");
     }
-  }, [currentSessionId]);
+  }, [currentSession]);
 
   const adjustTextareaHeight = useCallback(() => {
     const el = textareaRef.current;
@@ -689,18 +709,24 @@ export default function Chat() {
               <div className="mb-4 rounded-xl border border-[#25282C] bg-[#111215] p-3">
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-[#9CA3AF]">Required hooks</span>
-                  <span className="text-sm font-bold text-[#D0FF00]">3/3</span>
+                  <span className={cn("text-sm font-bold", passedTemplateChecks === 3 ? "text-[#D0FF00]" : "text-[#FF6B6B]")}>
+                    {passedTemplateChecks}/3
+                  </span>
                 </div>
               </div>
 
               <div className="mb-4 space-y-2">
-                {TEMPLATE_CHECKS.map((check, index) => (
+                {templateChecks.map((check, index) => (
                   <div
                     key={index}
                     className="flex items-center justify-between rounded-xl border border-[#25282C] bg-[#111215] px-3 py-2"
                   >
                     <div className="flex items-center gap-2">
-                      <Check className="h-3.5 w-3.5 text-[#2EDEDB]" />
+                      {check.pass ? (
+                        <Check className="h-3.5 w-3.5 text-[#2EDEDB]" />
+                      ) : (
+                        <AlertCircle className="h-3.5 w-3.5 text-[#FF6B6B]" />
+                      )}
                       <span className="text-xs text-[#9CA3AF]">{check.label}</span>
                     </div>
                     <span className="text-[10px] uppercase text-[#6B7280]">{check.status}</span>
@@ -713,7 +739,7 @@ export default function Chat() {
                   <Shield className="h-3.5 w-3.5 text-[#FF6B6B]" />
                   <span className="text-xs font-medium text-white">Guards</span>
                 </div>
-                <div className="text-2xl font-bold text-white">3</div>
+                <div className="text-2xl font-bold text-white">{guardCount}</div>
               </div>
 
               <div className="mb-4 rounded-xl border border-[#25282C] bg-[#111215] p-3">
@@ -729,8 +755,8 @@ export default function Chat() {
                   <span className="text-xs font-medium text-white">Flap 规范提示</span>
                 </div>
                 <p className="text-xs leading-relaxed text-[#6B7280]">
-                  模板检查基于 Flap Tax Vault V2 规范。生成代码后请人工复核 Guardian、TWAP、Buyback
-                  触发条件等关键逻辑，上线前务必审计。
+                  此处是源码静态检查，不代表已经编译或完成安全审计。部署前仍需通过 solc 编译，并人工复核 Guardian、TWAP、Buyback
+                  触发条件等关键逻辑。
                 </p>
               </div>
             </div>

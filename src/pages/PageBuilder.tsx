@@ -7,7 +7,6 @@ import {
   Monitor,
   Tablet,
   Smartphone,
-  Sparkles,
   LayoutTemplate,
   Download,
   Wand2,

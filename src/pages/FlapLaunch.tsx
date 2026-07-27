@@ -12,7 +12,6 @@ import {
   Check,
   Wallet,
   Loader2,
-  AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWallet } from "@/hooks/useWallet";
@@ -22,16 +21,16 @@ import { useContractData } from "@/hooks/useContractData";
 import { ethers } from "ethers";
 import {
   SNOWBALL_LAUNCHPAD_ADDRESS,
-  LAUNCHPAD_ABI,
-  CREATE_FEE_WEI,
   BSC_USDT_ADDRESS,
   buildCreateTokenParams,
+  preflightCreateToken,
+  submitCreateToken,
 } from "@/lib/contracts/snowball";
-import { KIMI_TOKEN_ADDRESS, DEPLOY_BURN_AMOUNT } from "@/lib/contracts/deployer";
+import { burnKimiTokens, DEPLOY_BURN_AMOUNT, getKimiBalance } from "@/lib/contracts/deployer";
+import { formatContractError } from "@/lib/contracts/errors";
+import { TransactionError } from "@/components/TransactionError";
 
 const CHECKLIST_STORAGE_KEY = "kimi-flap-launch-checklist";
-
-const KIMI_ABI = ["function burn(uint256 amount) external", "function balanceOf(address account) view returns (uint256)"];
 
 const TABS = [
   { key: "guide", label: "发币指南", icon: BookOpen },
@@ -95,7 +94,9 @@ function readChecklist(): Record<string, boolean> {
   try {
     const raw = localStorage.getItem(CHECKLIST_STORAGE_KEY);
     if (raw) return JSON.parse(raw);
-  } catch {}
+  } catch {
+    // 忽略损坏的旧版浏览器缓存。
+  }
   return {};
 }
 
@@ -119,7 +120,10 @@ export default function FlapLaunch() {
     tax: "500",
   });
   const [launching, setLaunching] = useState(false);
+  const [launchStep, setLaunchStep] = useState<"preflight" | "launch" | "fee">("preflight");
   const [result, setResult] = useState<{ address: string; txHash: string } | null>(null);
+  const [launchError, setLaunchError] = useState<{ summary: string; details: string } | null>(null);
+  const [feeWarning, setFeeWarning] = useState<{ summary: string; details: string } | null>(null);
 
   useEffect(() => {
     saveChecklist(checked);
@@ -151,80 +155,86 @@ export default function FlapLaunch() {
     }
 
     setLaunching(true);
-    addLog({ type: "info", message: "正在通过工厂合约创建代币" });
+    setLaunchStep("preflight");
+    setLaunchError(null);
+    setFeeWarning(null);
+    setResult(null);
+    addLog({ type: "info", message: "正在预检站内发币参数" });
 
     try {
-      const params = buildCreateTokenParams({
-        name: form.name,
-        symbol: form.symbol,
-        totalSupply: form.supply,
-        hiddenFeeReceiver: wallet.account,
-        rewardToken: BSC_USDT_ADDRESS,
-        buyHiddenTaxBp: "0",
-        buyBurnBp: "0",
-        buyLiquidityBp: "0",
-        buyDividendBp: form.tax,
-        sellHiddenTaxBp: "0",
-        sellBurnBp: "0",
-        sellLiquidityBp: "0",
-        sellDividendBp: form.tax,
-        ordinaryWhitelist: "",
-        limitAccounts: "",
-        limitQuotas: "",
-        limitModeEnabled: false,
-        requestAutoVerify: true,
+      const params = buildCreateTokenParams(
+        {
+          name: form.name,
+          symbol: form.symbol,
+          totalSupply: form.supply,
+          hiddenFeeReceiver: wallet.account,
+          rewardToken: BSC_USDT_ADDRESS,
+          buyHiddenTaxBp: "0",
+          buyBurnBp: "0",
+          buyLiquidityBp: "0",
+          buyDividendBp: form.tax,
+          sellHiddenTaxBp: "0",
+          sellBurnBp: "0",
+          sellLiquidityBp: "0",
+          sellDividendBp: form.tax,
+          ordinaryWhitelist: "",
+          limitAccounts: "",
+          limitQuotas: "",
+          limitModeEnabled: false,
+          requestAutoVerify: true,
+        },
+        { defaultHiddenFeeReceiver: wallet.account, defaultRewardToken: BSC_USDT_ADDRESS }
+      );
+
+      const balance = await getKimiBalance(wallet.signer, wallet.account);
+      if (balance < DEPLOY_BURN_AMOUNT) {
+        throw new Error("KIMI 余额不足，需要至少 20,000 KIMI");
+      }
+      const preflight = await preflightCreateToken(wallet.signer, params);
+      addLog({
+        type: "success",
+        message: "站内发币预检通过",
+        detail: `预计 Gas ${preflight.gasEstimate.toString()}，预计地址 ${preflight.predictedToken}`,
       });
 
-      // 先销毁 20,000 KIMI
-      addLog({ type: "info", message: "正在销毁 20,000 KIMI 作为发币费用" });
-      const kimiToken = new ethers.Contract(KIMI_TOKEN_ADDRESS, KIMI_ABI, wallet.signer);
-      const balance = await kimiToken.balanceOf(wallet.account);
-      if (balance < DEPLOY_BURN_AMOUNT) {
-        showToast({ type: "error", message: "KIMI 余额不足，需要 20,000 KIMI" });
-        setLaunching(false);
-        return;
-      }
-      const burnTx = await kimiToken.burn(DEPLOY_BURN_AMOUNT);
-      await burnTx.wait();
-      addLog({ type: "success", message: "已销毁 20,000 KIMI", detail: burnTx.hash });
-
-      const contract = new ethers.Contract(SNOWBALL_LAUNCHPAD_ADDRESS, LAUNCHPAD_ABI, wallet.signer);
-      const tx = await contract.createToken(params, { value: 0 });
-      const receipt = await tx.wait();
-
-      const event = receipt?.logs
-        ?.map((log: ethers.Log) => {
-          try {
-            return contract.interface.parseLog(log);
-          } catch {
-            return null;
-          }
-        })
-        .find((parsed: ethers.LogDescription | null) => parsed?.name === "TokenCreated");
-
-      const tokenAddress = (event?.args?.token as string) || "";
-      setResult({ address: tokenAddress, txHash: tx.hash });
+      setLaunchStep("launch");
+      const launch = await submitCreateToken(wallet.signer, params, preflight.fee);
+      setResult({ address: launch.tokenAddress, txHash: launch.txHash });
 
       addToken({
         name: form.name,
         symbol: form.symbol,
-        address: tokenAddress,
-        deployer: wallet.account || "",
+        address: launch.tokenAddress,
+        deployer: wallet.account,
         network: "BNB Smart Chain",
         chainId: 56,
-        txHash: tx.hash,
+        txHash: launch.txHash,
         status: "success",
         totalSupply: form.supply,
         type: "flap",
       });
       recordLaunch(form.name);
 
-      addLog({ type: "success", message: "站内一键发币成功", detail: tokenAddress });
+      setLaunchStep("fee");
+      try {
+        const burnResult = await burnKimiTokens({ signer: wallet.signer, amount: DEPLOY_BURN_AMOUNT });
+        addLog({ type: "success", message: "已销毁 20,000 KIMI 发币费用", detail: burnResult.txHash });
+      } catch (feeError) {
+        const friendly = formatContractError(feeError, "KIMI 费用支付失败");
+        setFeeWarning({
+          summary: `代币已经创建，但 20,000 KIMI 费用未完成：${friendly.summary}`,
+          details: friendly.details,
+        });
+        addLog({ type: "error", message: "代币已创建，但 KIMI 费用未完成", detail: friendly.details });
+      }
+
+      addLog({ type: "success", message: "站内一键发币成功", detail: launch.tokenAddress });
       showToast({ type: "success", message: "代币创建成功" });
     } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
-      addLog({ type: "error", message: "站内一键发币失败", detail });
-      showToast({ type: "error", message: "创建失败" });
+      const friendly = formatContractError(error, "站内一键发币失败");
+      setLaunchError(friendly);
+      addLog({ type: "error", message: "站内一键发币失败", detail: friendly.details });
+      showToast({ type: "error", message: friendly.summary });
     } finally {
       setLaunching(false);
     }
@@ -469,6 +479,18 @@ export default function FlapLaunch() {
             </div>
           )}
 
+          {launchError && (
+            <div className="mt-4">
+              <TransactionError summary={launchError.summary} details={launchError.details} />
+            </div>
+          )}
+
+          {feeWarning && (
+            <div className="mt-4">
+              <TransactionError summary={feeWarning.summary} details={feeWarning.details} />
+            </div>
+          )}
+
           <button
             onClick={handleInternalLaunch}
             disabled={launching}
@@ -484,7 +506,11 @@ export default function FlapLaunch() {
               <Rocket className="h-4 w-4" />
             )}
             {launching
-              ? "创建中…"
+              ? launchStep === "preflight"
+                ? "正在安全预检…"
+                : launchStep === "fee"
+                  ? "代币已创建，正在支付 KIMI…"
+                  : "正在链上创建代币…"
               : !wallet.isConnected
               ? "连接钱包"
               : !wallet.isBSC

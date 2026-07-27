@@ -76,6 +76,8 @@ function readTokens(): IssuedToken[] {
         createdAt: t.createdAt ?? Date.now(),
       }));
     }
-  } catch {}
+  } catch {
+    // 忽略损坏的本地缓存并回退到空列表。
+  }
   return [];
 }

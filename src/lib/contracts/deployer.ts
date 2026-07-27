@@ -1,18 +1,23 @@
 import { ethers } from "ethers";
 
-// 雪球普通发币工厂合约（BSC mainnet）
-// 如需重新部署，可运行 多零直发发射台/scripts/deploy-snowball-launchpad.js
-export const DEPLOY_FACTORY_ADDRESS: string = "0x972D488F3e952b11a13b96C0aCCECbA9855A97EC";
+const configuredDeployFactory = import.meta.env.VITE_DEPLOY_FACTORY_ADDRESS?.trim();
+
+/**
+ * 通用部署工厂必须实现 DEPLOY_FACTORY_ABI。
+ * 旧版本误把 Snowball 发币 Factory 当成通用部署工厂，现默认禁用。
+ */
+export const DEPLOY_FACTORY_ADDRESS: string =
+  configuredDeployFactory && ethers.isAddress(configuredDeployFactory)
+    ? ethers.getAddress(configuredDeployFactory)
+    : ethers.ZeroAddress;
+
+export const IS_DEPLOY_FACTORY_CONFIGURED = DEPLOY_FACTORY_ADDRESS !== ethers.ZeroAddress;
 
 // KIMI 代币合约地址（BSC mainnet）
-// 已部署并开源验证：https://bscscan.com/address/0x7A4b49cCAaDF69C4FCfd2223F8E3e30dAAb9F123#code
-export const KIMI_TOKEN_ADDRESS: string = "0x7A4b49cCAaDF69C4FCfd2223F8E3e30dAAb9F123";
-
-// 销毁地址：转入此地址即视为销毁
-export const BURN_ADDRESS: string = "0x000000000000000000000000000000000000dEaD";
+export const KIMI_TOKEN_ADDRESS = "0x7A4b49cCAaDF69C4FCfd2223F8E3e30dAAb9F123";
 
 // 部署费：20,000 KIMI，18 位小数
-export const DEPLOY_BURN_AMOUNT: bigint = 20000n * 10n ** 18n;
+export const DEPLOY_BURN_AMOUNT = 20_000n * 10n ** 18n;
 
 export const BSC_RPC_URL = "https://bsc-dataseed.binance.org/";
 export const BSC_CHAIN_ID = 56;
@@ -23,7 +28,6 @@ export const EXPLORERS: Record<string, string> = {
   eth: "https://etherscan.io",
   arb: "https://arbiscan.io",
   base: "https://basescan.org",
-  robinhood: "https://explorer.robinhood.chain", // TODO: update when official explorer is available
 };
 
 export const RPCS: Record<string, string> = {
@@ -31,7 +35,6 @@ export const RPCS: Record<string, string> = {
   eth: "https://ethereum-rpc.publicnode.com",
   arb: "https://arbitrum-one.publicnode.com",
   base: "https://base.publicnode.com",
-  robinhood: "https://rpc.robinhood.chain", // TODO: update when official RPC is available
 };
 
 export const CHAIN_IDS: Record<string, number> = {
@@ -39,65 +42,163 @@ export const CHAIN_IDS: Record<string, number> = {
   eth: 1,
   arb: 42161,
   base: 8453,
-  robinhood: 138, // TODO: update when official chain ID is available
 };
 
-// 通用工厂 ABI：部署字节码并返回合约地址
-// 当用户部署真实工厂后，可在此替换为对应 ABI
 export const DEPLOY_FACTORY_ABI = [
-  "function deploy(bytes memory bytecode, bytes memory args) external payable returns (address deployed)",
+  "function deploy(bytes bytecode, bytes args) external payable returns (address deployed)",
   "function getDeployFee() external view returns (uint256)",
   "event ContractDeployed(address indexed deployer, address indexed deployed, uint256 fee)",
 ];
 
-// 手动部署：使用 ethers ContractFactory
+export interface DeploymentResult {
+  address: string;
+  deployTxHash: string;
+}
+
+function parseAbi(abi: string): ethers.InterfaceAbi {
+  if (!abi.trim()) throw new Error("请填写合约 ABI");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(abi);
+  } catch {
+    throw new Error("ABI 不是有效的 JSON");
+  }
+  if (!Array.isArray(parsed)) throw new Error("ABI 必须是 JSON 数组");
+  return parsed as ethers.InterfaceAbi;
+}
+
+export function normalizeBytecode(input: string): string {
+  const bytecode = input.trim();
+  if (!bytecode || bytecode === "0x") throw new Error("请填写编译后的合约创建 Bytecode，不能只填写 0x");
+  if (!ethers.isHexString(bytecode) || bytecode.length % 2 !== 0) {
+    throw new Error("Bytecode 必须是以 0x 开头、长度为偶数的十六进制数据");
+  }
+  return bytecode;
+}
+
+function rejectUnsafeNumbers(value: unknown, path = "构造参数") {
+  if (typeof value === "number" && (!Number.isFinite(value) || !Number.isSafeInteger(value))) {
+    throw new Error(`${path} 中的大整数请使用字符串，例如 "1000000000000000000"`);
+  }
+  if (Array.isArray(value)) value.forEach((item, index) => rejectUnsafeNumbers(item, `${path}[${index}]`));
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    Object.entries(value).forEach(([key, item]) => rejectUnsafeNumbers(item, `${path}.${key}`));
+  }
+}
+
+export function parseConstructorArgs(input: string): unknown[] {
+  const trimmed = input.trim();
+  if (!trimmed) return [];
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (!Array.isArray(parsed)) throw new Error("构造参数必须是 JSON 数组");
+    rejectUnsafeNumbers(parsed);
+    return parsed;
+  } catch (error) {
+    if (error instanceof Error && /JSON 数组|大整数/.test(error.message)) throw error;
+    return trimmed.split(",").map((item) => {
+      const value = item.trim();
+      if (value === "true") return true;
+      if (value === "false") return false;
+      // 整数保持为字符串，避免 uint256 精度丢失。
+      if (/^-?\d+$/.test(value)) return value;
+      return value;
+    });
+  }
+}
+
+export function encodeConstructorArgs(abi: string, constructorArgs: unknown[]): string {
+  const iface = new ethers.Interface(parseAbi(abi));
+  const inputs = iface.deploy.inputs;
+  if (inputs.length !== constructorArgs.length) {
+    throw new Error(`构造函数需要 ${inputs.length} 个参数，当前填写了 ${constructorArgs.length} 个`);
+  }
+  if (inputs.length === 0) return "0x";
+  return ethers.AbiCoder.defaultAbiCoder().encode(inputs, constructorArgs);
+}
+
+export function parseDeployValue(value: string): bigint {
+  const normalized = value.trim() || "0";
+  try {
+    const parsed = ethers.parseEther(normalized);
+    if (parsed < 0n) throw new Error();
+    return parsed;
+  } catch {
+    throw new Error("附带的 ETH/BNB 数量格式不正确");
+  }
+}
+
+export async function preflightBytecodeDeployment(params: {
+  signer: ethers.Signer;
+  bytecode: string;
+  abi: string;
+  constructorArgs: unknown[];
+  value?: bigint;
+}): Promise<bigint> {
+  const bytecode = normalizeBytecode(params.bytecode);
+  const factory = new ethers.ContractFactory(parseAbi(params.abi), bytecode, params.signer);
+  const request = await factory.getDeployTransaction(...params.constructorArgs, { value: params.value ?? 0n });
+  return params.signer.estimateGas(request);
+}
+
 export async function deployBytecode(params: {
   signer: ethers.Signer;
   bytecode: string;
   abi: string;
   constructorArgs: unknown[];
   value?: bigint;
-}) {
-  const { signer, bytecode, abi, constructorArgs, value } = params;
-
-  const parsedAbi = JSON.parse(abi) as ethers.InterfaceAbi;
-  const factory = new ethers.ContractFactory(parsedAbi, bytecode, signer);
-
-  const deployTx = await factory.deploy(...constructorArgs, { value });
-  const contract = await deployTx.waitForDeployment();
+}): Promise<DeploymentResult> {
+  const bytecode = normalizeBytecode(params.bytecode);
+  await preflightBytecodeDeployment({ ...params, bytecode });
+  const factory = new ethers.ContractFactory(parseAbi(params.abi), bytecode, params.signer);
+  const contract = await factory.deploy(...params.constructorArgs, { value: params.value ?? 0n });
+  await contract.waitForDeployment();
   const address = await contract.getAddress();
   const deployTxHash = contract.deploymentTransaction()?.hash ?? "";
-
-  return { address, deployTxHash };
+  if (!ethers.isAddress(address) || !deployTxHash) throw new Error("部署交易已确认，但未取得合约地址或交易哈希");
+  return { address: ethers.getAddress(address), deployTxHash };
 }
 
-// 工厂部署：调用外部工厂合约
 export async function deployViaFactory(params: {
   signer: ethers.Signer;
   bytecode: string;
-  args: string;
-  value?: bigint;
-}) {
-  if (DEPLOY_FACTORY_ADDRESS === ethers.ZeroAddress) {
-    throw new Error("工厂合约地址尚未配置，请先部署工厂合约并更新 DEPLOY_FACTORY_ADDRESS");
+  encodedArgs: string;
+  constructorValue?: bigint;
+}): Promise<DeploymentResult> {
+  if (!IS_DEPLOY_FACTORY_CONFIGURED) {
+    throw new Error("通用部署工厂未配置。旧地址是发币 Factory，不支持 deploy(bytes,bytes)，请使用钱包直接部署");
   }
+  const provider = params.signer.provider;
+  if (!provider) throw new Error("钱包 Provider 不可用");
+  const code = await provider.getCode(DEPLOY_FACTORY_ADDRESS);
+  if (code === "0x") throw new Error("当前网络没有部署通用部署工厂");
 
+  const bytecode = normalizeBytecode(params.bytecode);
   const contract = new ethers.Contract(DEPLOY_FACTORY_ADDRESS, DEPLOY_FACTORY_ABI, params.signer);
-  const tx = await contract.deploy(params.bytecode, params.args, { value: params.value });
+  let deployFee: bigint;
+  try {
+    deployFee = (await contract.getDeployFee()) as bigint;
+  } catch {
+    throw new Error("配置的地址不兼容通用部署工厂 ABI，请检查 VITE_DEPLOY_FACTORY_ADDRESS");
+  }
+  const value = deployFee + (params.constructorValue ?? 0n);
+  await contract.deploy.estimateGas(bytecode, params.encodedArgs, { value });
+  const tx = await contract.deploy(bytecode, params.encodedArgs, { value });
   const receipt = await tx.wait();
-
   const event = receipt?.logs
-    ?.map((log: ethers.Log) => {
+    .map((log: ethers.Log) => {
       try {
         return contract.interface.parseLog(log);
       } catch {
         return null;
       }
     })
-    .find((parsed) => parsed?.name === "ContractDeployed");
-
-  const deployedAddress = event?.args?.deployed ?? "";
-  return { address: deployedAddress, deployTxHash: tx.hash };
+    .find((parsed: ethers.LogDescription | null) => parsed?.name === "ContractDeployed");
+  const deployedAddress = event?.args?.deployed as string | undefined;
+  if (!deployedAddress || !ethers.isAddress(deployedAddress)) {
+    throw new Error("部署交易成功，但未找到 ContractDeployed 事件");
+  }
+  return { address: ethers.getAddress(deployedAddress), deployTxHash: tx.hash };
 }
 
 export function getExplorerUrl(network: string, path: string) {
@@ -105,39 +206,28 @@ export function getExplorerUrl(network: string, path: string) {
   return `${base}${path}`;
 }
 
-// ERC20 最小 ABI
-const ERC20_ABI = [
-  "function transfer(address to, uint256 amount) external returns (bool)",
+const KIMI_ABI = [
+  "function burn(uint256 amount) external",
   "function balanceOf(address account) external view returns (uint256)",
   "function decimals() external view returns (uint8)",
 ];
 
-// 真实销毁 KIMI 代币：从用户钱包转入销毁地址
-export async function burnKimiTokens(params: { signer: ethers.Signer; amount?: bigint }) {
-  const { signer, amount = DEPLOY_BURN_AMOUNT } = params;
-  if (KIMI_TOKEN_ADDRESS === ethers.ZeroAddress) {
-    throw new Error("KIMI 代币地址尚未配置，请在 src/lib/contracts/deployer.ts 中设置 KIMI_TOKEN_ADDRESS");
-  }
-  const contract = new ethers.Contract(KIMI_TOKEN_ADDRESS, ERC20_ABI, signer);
-  const tx = await contract.transfer(BURN_ADDRESS, amount);
-  const receipt = await tx.wait();
-  return { txHash: tx.hash, receipt };
+export async function getKimiBalance(signer: ethers.Signer, account?: string): Promise<bigint> {
+  const owner = account || (await signer.getAddress());
+  const provider = signer.provider;
+  if (!provider) throw new Error("钱包 Provider 不可用");
+  const code = await provider.getCode(KIMI_TOKEN_ADDRESS);
+  if (code === "0x") throw new Error("当前网络没有部署 KIMI 代币，请切换到 BNB Smart Chain");
+  const contract = new ethers.Contract(KIMI_TOKEN_ADDRESS, KIMI_ABI, signer);
+  return (await contract.balanceOf(owner)) as bigint;
 }
 
-export function parseConstructorArgs(input: string): unknown[] {
-  const trimmed = input.trim();
-  if (!trimmed) return [];
-  try {
-    return JSON.parse(trimmed) as unknown[];
-  } catch {
-    // 尝试按逗号分隔解析（简单类型）
-    return trimmed.split(",").map((item) => {
-      const value = item.trim();
-      if (value === "true") return true;
-      if (value === "false") return false;
-      if (/^0x[a-fA-F0-9]+$/.test(value)) return value;
-      if (/^\d+$/.test(value)) return Number(value);
-      return value;
-    });
-  }
+export async function burnKimiTokens(params: { signer: ethers.Signer; amount?: bigint }) {
+  const amount = params.amount ?? DEPLOY_BURN_AMOUNT;
+  const balance = await getKimiBalance(params.signer);
+  if (balance < amount) throw new Error("KIMI 余额不足，需要至少 20,000 KIMI");
+  const contract = new ethers.Contract(KIMI_TOKEN_ADDRESS, KIMI_ABI, params.signer);
+  const tx = await contract.burn(amount);
+  const receipt = await tx.wait();
+  return { txHash: tx.hash, receipt };
 }

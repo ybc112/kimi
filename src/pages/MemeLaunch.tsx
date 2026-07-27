@@ -5,13 +5,11 @@ import {
   Wallet,
   Rocket,
   Image as ImageIcon,
-  AlertCircle,
   CheckCircle,
   Copy,
   Loader2,
   ExternalLink,
   RefreshCw,
-  Check,
   Dices,
 } from "lucide-react";
 import { ethers } from "ethers";
@@ -21,19 +19,19 @@ import { useIssuedTokens } from "@/hooks/useIssuedTokens";
 import { useContractData } from "@/hooks/useContractData";
 import { DEFAULT_MODEL, sendChatMessage, generateImage } from "@/lib/kimi";
 import { cn } from "@/lib/utils";
-import Empty from "@/components/Empty";
+import { TransactionError } from "@/components/TransactionError";
 import {
   SNOWBALL_LAUNCHPAD_ADDRESS,
   CREATE_FEE_WEI,
   BSC_USDT_ADDRESS,
-  LAUNCHPAD_ABI,
   buildCreateTokenParams,
   fetchCreateFee,
+  preflightCreateToken,
+  submitCreateToken,
   type CreateTokenFormValues,
 } from "@/lib/contracts/snowball";
-import { KIMI_TOKEN_ADDRESS, DEPLOY_BURN_AMOUNT } from "@/lib/contracts/deployer";
-
-const KIMI_ABI = ["function burn(uint256 amount) external", "function balanceOf(address account) view returns (uint256)"];
+import { burnKimiTokens, DEPLOY_BURN_AMOUNT, getKimiBalance } from "@/lib/contracts/deployer";
+import { formatContractError } from "@/lib/contracts/errors";
 
 const DEFAULT_FORM: CreateTokenFormValues = {
   name: "",
@@ -109,7 +107,9 @@ function readSavedMeme(): SavedMeme | null {
   try {
     const raw = localStorage.getItem(MEME_STORAGE_KEY);
     if (raw) return JSON.parse(raw);
-  } catch {}
+  } catch {
+    // 忽略损坏的旧版浏览器缓存。
+  }
   return null;
 }
 
@@ -135,6 +135,10 @@ export default function MemeLaunch() {
   const [txHash, setTxHash] = useState<string>("");
   const [tokenAddress, setTokenAddress] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string>("");
+  const [errorDetails, setErrorDetails] = useState<string>("");
+  const [feeWarning, setFeeWarning] = useState<string>("");
+  const [feeWarningDetails, setFeeWarningDetails] = useState<string>("");
+  const [txStep, setTxStep] = useState<"idle" | "preflight" | "launch" | "fee">("idle");
   const [imageError, setImageError] = useState<string>("");
   const [copied, setCopied] = useState(false);
   const [createFee, setCreateFee] = useState<string>(CREATE_FEE_WEI);
@@ -256,10 +260,10 @@ export default function MemeLaunch() {
     } finally {
       setGenerating(false);
     }
-  }, [concept, generating, addLog, showToast, form]);
+  }, [concept, generating, addLog, showToast, form, imageUrl]);
 
   const handleLaunch = async () => {
-    if (!wallet.isConnected || !wallet.signer) {
+    if (!wallet.isConnected || !wallet.signer || !wallet.account) {
       await wallet.connectWallet();
       return;
     }
@@ -269,70 +273,75 @@ export default function MemeLaunch() {
     }
 
     setTxStatus("pending");
+    setTxStep("preflight");
     setErrorMessage("");
+    setErrorDetails("");
+    setFeeWarning("");
+    setFeeWarningDetails("");
     setTxHash("");
     setTokenAddress("");
-    addLog({ type: "info", message: "正在调用 SnowballLaunchpad 创建代币" });
+    addLog({ type: "info", message: "正在预检发币参数与链上 Factory" });
 
     try {
-      const params = buildCreateTokenParams(form);
-
-      // 先销毁 20,000 KIMI
-      addLog({ type: "info", message: "正在销毁 20,000 KIMI 作为发币费用" });
-      const kimiToken = new ethers.Contract(KIMI_TOKEN_ADDRESS, KIMI_ABI, wallet.signer);
-      const balance = await kimiToken.balanceOf(wallet.account);
+      const params = buildCreateTokenParams(form, {
+        defaultHiddenFeeReceiver: wallet.account,
+        defaultRewardToken: BSC_USDT_ADDRESS,
+      });
+      const balance = await getKimiBalance(wallet.signer, wallet.account);
       if (balance < DEPLOY_BURN_AMOUNT) {
-        setErrorMessage("KIMI 余额不足，需要 20,000 KIMI");
-        showToast({ type: "error", message: "KIMI 余额不足，需要 20,000 KIMI" });
-        setTxStatus("idle");
-        return;
+        throw new Error("KIMI 余额不足，需要至少 20,000 KIMI");
       }
-      const burnTx = await kimiToken.burn(DEPLOY_BURN_AMOUNT);
-      await burnTx.wait();
-      addLog({ type: "success", message: "已销毁 20,000 KIMI", detail: burnTx.hash });
+      const preflight = await preflightCreateToken(wallet.signer, params);
+      setCreateFee(preflight.fee.toString());
+      addLog({
+        type: "success",
+        message: "发币预检通过",
+        detail: `预计 Gas ${preflight.gasEstimate.toString()}，预计地址 ${preflight.predictedToken}`,
+      });
 
-      const contract = new ethers.Contract(SNOWBALL_LAUNCHPAD_ADDRESS, LAUNCHPAD_ABI, wallet.signer);
-      const tx = await contract.createToken(params, { value: 0 });
-      setTxHash(tx.hash);
-      const receipt = await tx.wait();
+      setTxStep("launch");
+      const result = await submitCreateToken(wallet.signer, params, preflight.fee);
+      setTxHash(result.txHash);
+      setTokenAddress(result.tokenAddress);
+      addToken({
+        name: form.name,
+        symbol: form.symbol,
+        address: result.tokenAddress,
+        deployer: wallet.account,
+        network: "BNB Smart Chain",
+        chainId: 56,
+        txHash: result.txHash,
+        status: "success",
+        totalSupply: form.totalSupply,
+        type: "meme",
+        imageUrl,
+      });
+      recordLaunch(form.name);
 
-      const event = receipt?.logs
-        ?.map((log: ethers.Log) => {
-          try {
-            return contract.interface.parseLog(log);
-          } catch {
-            return null;
-          }
-        })
-        .find((parsed: ethers.LogDescription | null) => parsed?.name === "TokenCreated");
-
-      const createdToken = event?.args?.token as string | undefined;
-      if (createdToken) {
-        setTokenAddress(createdToken);
-        addToken({
-          name: form.name,
-          symbol: form.symbol,
-          address: createdToken,
-          deployer: wallet.account || "",
-          network: "BNB Smart Chain",
-          chainId: 56,
-          txHash: tx.hash,
-          status: "success",
-          totalSupply: form.totalSupply,
-          type: "meme",
-          imageUrl,
-        });
-        recordLaunch(form.name);
+      // 先确保代币创建成功，再支付 KIMI，避免“费用已销毁但发币失败”。
+      setTxStep("fee");
+      try {
+        const burnResult = await burnKimiTokens({ signer: wallet.signer, amount: DEPLOY_BURN_AMOUNT });
+        addLog({ type: "success", message: "已销毁 20,000 KIMI 发币费用", detail: burnResult.txHash });
+      } catch (feeError) {
+        const friendly = formatContractError(feeError, "KIMI 费用支付失败");
+        setFeeWarning(`代币已经创建，但 20,000 KIMI 费用未完成：${friendly.summary}`);
+        setFeeWarningDetails(friendly.details);
+        addLog({ type: "error", message: "代币已创建，但 KIMI 费用未完成", detail: friendly.details });
       }
+
       setTxStatus("success");
-      addLog({ type: "success", message: "代币创建成功", detail: createdToken });
+      setTxStep("idle");
+      addLog({ type: "success", message: "代币创建成功", detail: result.tokenAddress });
       showToast({ type: "success", message: "代币发射成功" });
     } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
-      setErrorMessage(detail);
+      const friendly = formatContractError(error, "代币发射失败");
+      setErrorMessage(friendly.summary);
+      setErrorDetails(friendly.details);
       setTxStatus("error");
-      addLog({ type: "error", message: "代币创建失败", detail });
-      showToast({ type: "error", message: "代币发射失败" });
+      setTxStep("idle");
+      addLog({ type: "error", message: "代币创建失败", detail: friendly.details });
+      showToast({ type: "error", message: friendly.summary });
     }
   };
 
@@ -359,12 +368,18 @@ export default function MemeLaunch() {
   const isBuyTaxValid = totalBuyTax <= 25;
   const isSellTaxValid = totalSellTax <= 25;
 
-  const canLaunch =
-    form.name.trim() &&
-    form.symbol.trim() &&
-    Number(form.totalSupply || 0) > 0 &&
-    isBuyTaxValid &&
-    isSellTaxValid;
+  const formValidationMessage = useMemo(() => {
+    try {
+      buildCreateTokenParams(form, {
+        defaultHiddenFeeReceiver: wallet.account || "0x000000000000000000000000000000000000dEaD",
+        defaultRewardToken: BSC_USDT_ADDRESS,
+      });
+      return "";
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
+  }, [form, wallet.account]);
+  const canLaunch = !formValidationMessage && isBuyTaxValid && isSellTaxValid;
   const createFeeBNB = useMemo(() => {
     try {
       return Number(ethers.formatEther(createFee)).toFixed(4);
@@ -577,6 +592,9 @@ export default function MemeLaunch() {
                   placeholder="留空则默认为你的钱包地址"
                   className="kimi-input"
                 />
+                {!form.hiddenFeeReceiver.trim() && (
+                  <p className="mt-1 text-[11px] text-[#6B7280]">发射时会自动使用当前连接的钱包地址。</p>
+                )}
               </div>
               <div>
                 <label className="mb-1.5 block text-xs text-[#9CA3AF]">分红代币地址</label>
@@ -765,20 +783,15 @@ export default function MemeLaunch() {
                   </div>
                 )}
 
-                {txStatus === "error" && (
-                  <div className="flex items-start gap-2 text-sm text-[#FF6B6B]">
-                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                    <span>{errorMessage || "交易失败"}</span>
-                  </div>
+                {txStatus === "error" && <TransactionError summary={errorMessage || "交易失败"} details={errorDetails} />}
+                {txStatus === "success" && feeWarning && (
+                  <TransactionError summary={feeWarning} details={feeWarningDetails} />
                 )}
               </div>
             )}
 
             {errorMessage && txStatus === "idle" && (
-              <div className="flex items-start gap-2 rounded-xl border border-[#FF6B6B]/30 bg-[#FF6B6B]/10 p-3 text-sm text-[#FF6B6B]">
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>{errorMessage}</span>
-              </div>
+              <TransactionError summary={errorMessage} details={errorDetails} />
             )}
           </div>
 
@@ -797,10 +810,15 @@ export default function MemeLaunch() {
               </div>
               <code className="block truncate text-xs text-[#E8E8E8]">{SNOWBALL_LAUNCHPAD_ADDRESS}</code>
               <div className="mt-2 flex items-center justify-between text-xs">
-                <span className="text-[#6B7280]">创建费用</span>
+                <span className="text-[#6B7280]">链上创建费</span>
+                <span className="font-medium text-[#D0FF00]">{createFeeBNB} BNB</span>
+              </div>
+              <div className="mt-1 flex items-center justify-between text-xs">
+                <span className="text-[#6B7280]">平台费用（创建成功后）</span>
                 <span className="font-medium text-[#D0FF00]">20,000 KIMI</span>
               </div>
             </div>
+            {formValidationMessage && <p className="mb-3 text-xs text-[#FF6B6B]">{formValidationMessage}</p>}
             <button
               onClick={handleLaunch}
               disabled={txStatus === "pending" || !canLaunch}
@@ -816,7 +834,11 @@ export default function MemeLaunch() {
                 <Rocket className="h-4 w-4" />
               )}
               {txStatus === "pending"
-                ? "发射中…"
+                ? txStep === "preflight"
+                  ? "正在安全预检…"
+                  : txStep === "fee"
+                    ? "代币已创建，正在支付 KIMI…"
+                    : "正在链上创建代币…"
                 : !wallet.isConnected
                   ? "连接钱包"
                   : !wallet.isBSC

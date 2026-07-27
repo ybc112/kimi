@@ -4,16 +4,41 @@ import { BSC_RPC_URL } from "@/lib/contracts/snowball";
 
 export const BSC_CHAIN_ID = 56;
 
-const BSC_NETWORK_PARAMS = {
-  chainId: "0x38",
-  chainName: "BNB Smart Chain Mainnet",
-  nativeCurrency: {
-    name: "BNB",
-    symbol: "BNB",
-    decimals: 18,
+const NETWORK_PARAMS: Record<number, {
+  chainId: string;
+  chainName: string;
+  nativeCurrency: { name: string; symbol: string; decimals: number };
+  rpcUrls: string[];
+  blockExplorerUrls: string[];
+}> = {
+  56: {
+    chainId: "0x38",
+    chainName: "BNB Smart Chain Mainnet",
+    nativeCurrency: { name: "BNB", symbol: "BNB", decimals: 18 },
+    rpcUrls: [BSC_RPC_URL],
+    blockExplorerUrls: ["https://bscscan.com"],
   },
-  rpcUrls: [BSC_RPC_URL],
-  blockExplorerUrls: ["https://bscscan.com"],
+  1: {
+    chainId: "0x1",
+    chainName: "Ethereum Mainnet",
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+    rpcUrls: ["https://ethereum-rpc.publicnode.com"],
+    blockExplorerUrls: ["https://etherscan.io"],
+  },
+  42161: {
+    chainId: "0xa4b1",
+    chainName: "Arbitrum One",
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+    rpcUrls: ["https://arbitrum-one.publicnode.com"],
+    blockExplorerUrls: ["https://arbiscan.io"],
+  },
+  8453: {
+    chainId: "0x2105",
+    chainName: "Base",
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+    rpcUrls: ["https://base.publicnode.com"],
+    blockExplorerUrls: ["https://basescan.org"],
+  },
 };
 
 export interface WalletState {
@@ -104,9 +129,14 @@ export function useWallet() {
     setError(null);
   }, []);
 
-  const switchToBSC = useCallback(async () => {
+  const switchNetwork = useCallback(async (targetChainId: number) => {
     if (!hasMetaMask) {
       setError("请安装 MetaMask 钱包");
+      return;
+    }
+    const networkParams = NETWORK_PARAMS[targetChainId];
+    if (!networkParams) {
+      setError(`暂不支持自动切换到 Chain ${targetChainId}`);
       return;
     }
     setLoading(true);
@@ -115,7 +145,7 @@ export function useWallet() {
       const ethereum = window.ethereum!;
       await ethereum.request({
         method: "wallet_switchEthereumChain",
-        params: [{ chainId: BSC_NETWORK_PARAMS.chainId }],
+        params: [{ chainId: networkParams.chainId }],
       });
       const provider = new ethers.BrowserProvider(ethereum);
       await updateStateFromProvider(provider);
@@ -126,7 +156,7 @@ export function useWallet() {
           const ethereum = window.ethereum!;
           await ethereum.request({
             method: "wallet_addEthereumChain",
-            params: [BSC_NETWORK_PARAMS],
+            params: [networkParams],
           });
           const provider = new ethers.BrowserProvider(ethereum);
           await updateStateFromProvider(provider);
@@ -142,6 +172,8 @@ export function useWallet() {
       setLoading(false);
     }
   }, [hasMetaMask, updateStateFromProvider]);
+
+  const switchToBSC = useCallback(() => switchNetwork(BSC_CHAIN_ID), [switchNetwork]);
 
   useEffect(() => {
     mounted.current = true;
@@ -175,6 +207,7 @@ export function useWallet() {
     hasMetaMask,
     connectWallet,
     disconnectWallet,
+    switchNetwork,
     switchToBSC,
   };
 }

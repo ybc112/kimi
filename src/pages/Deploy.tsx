@@ -1,5 +1,4 @@
-import { useState, useEffect } from "react";
-import { ethers } from "ethers";
+import { useState, useEffect, type ChangeEvent } from "react";
 import {
   Rocket,
   Wallet,
@@ -29,16 +28,20 @@ import {
   deployBytecode,
   deployViaFactory,
   burnKimiTokens,
-  DEPLOY_FACTORY_ADDRESS,
-  KIMI_TOKEN_ADDRESS,
   DEPLOY_BURN_AMOUNT,
   getExplorerUrl,
   parseConstructorArgs,
+  encodeConstructorArgs,
+  getKimiBalance,
+  parseDeployValue,
+  IS_DEPLOY_FACTORY_CONFIGURED,
   CHAIN_IDS,
 } from "@/lib/contracts/deployer";
 import { useAppStore } from "@/store";
 import { useIssuedTokens } from "@/hooks/useIssuedTokens";
 import { useContractData } from "@/hooks/useContractData";
+import { formatContractError } from "@/lib/contracts/errors";
+import { TransactionError } from "@/components/TransactionError";
 
 const networks = [
   { value: "bsc", label: "BNB Smart Chain", icon: "🔶", chainId: 56 },
@@ -55,7 +58,6 @@ const DEPLOY_MODES = [
 type DeployMode = (typeof DEPLOY_MODES)[number]["value"];
 
 const BURN_AMOUNT = "20,000";
-const isKimiConfigured = KIMI_TOKEN_ADDRESS !== "0x0000000000000000000000000000000000000000";
 
 export default function Deploy() {
   const { addLog, showToast } = useAppStore();
@@ -77,6 +79,9 @@ export default function Deploy() {
   const [txHash, setTxHash] = useState("");
   const [contractAddress, setContractAddress] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [errorDetails, setErrorDetails] = useState("");
+  const [feeWarning, setFeeWarning] = useState<{ summary: string; details: string } | null>(null);
+  const [deployPhase, setDeployPhase] = useState<"preflight" | "deploy" | "fee">("preflight");
   const [copiedField, setCopiedField] = useState<"address" | "tx" | null>(null);
   const [copiedCode, setCopiedCode] = useState(false);
 
@@ -136,69 +141,93 @@ export default function Deploy() {
     }
   };
 
+  const handleArtifactUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    try {
+      const artifact = JSON.parse(await file.text()) as {
+        abi?: unknown[];
+        bytecode?: string | { object?: string };
+        contractName?: string;
+      };
+      const artifactBytecode =
+        typeof artifact.bytecode === "string" ? artifact.bytecode : artifact.bytecode?.object || "";
+      if (!Array.isArray(artifact.abi) || !artifactBytecode) {
+        throw new Error("Artifact 必须包含 abi 和 bytecode 字段");
+      }
+      setAbi(JSON.stringify(artifact.abi, null, 2));
+      setBytecode(artifactBytecode.startsWith("0x") ? artifactBytecode : `0x${artifactBytecode}`);
+      if (artifact.contractName) setTokenName(artifact.contractName);
+      showToast({ type: "success", message: "Artifact 已导入，可进行部署预检" });
+    } catch (error) {
+      const friendly = formatContractError(error, "Artifact 导入失败");
+      setErrorMessage(friendly.summary);
+      setErrorDetails(friendly.details);
+      setStatus("error");
+    }
+  };
+
   const toggleGroup = (key: string) => {
     setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const runDeploy = async () => {
+  const runDeploy = async (chargeKimi: boolean) => {
     setErrorMessage("");
+    setErrorDetails("");
+    setFeeWarning(null);
     setTxHash("");
     setContractAddress("");
 
-    if (!wallet.isConnected || !wallet.signer) {
-      setErrorMessage("请先连接钱包");
-      return;
-    }
-
-    if (isWrongNetwork) {
-      setErrorMessage(`当前网络不正确，请切换到 ${networkLabel}`);
-      return;
-    }
-
-    if (mode === "manual") {
-      if (!bytecode.trim() || !abi.trim()) {
-        setErrorMessage("手动部署需要填写 Bytecode 和 ABI");
-        return;
-      }
-      if (!bytecode.startsWith("0x")) {
-        setErrorMessage("Bytecode 必须以 0x 开头");
-        return;
-      }
-    }
-
     setStatus("pending");
+    setDeployPhase("preflight");
 
     try {
-      const valueWei = deployValue ? BigInt(Math.floor(Number(deployValue) * 1e18)) : 0n;
+      const signer = wallet.signer;
+      const account = wallet.account;
+      if (!wallet.isConnected || !signer || !account) throw new Error("请先连接钱包");
+      if (isWrongNetwork) throw new Error(`当前网络不正确，请切换到 ${networkLabel}`);
+      if (mode === "factory" && !IS_DEPLOY_FACTORY_CONFIGURED) {
+        throw new Error("通用部署工厂未配置，请使用钱包直接部署");
+      }
+      if (chargeKimi && network !== "bsc") throw new Error("KIMI 部署费目前只支持 BNB Smart Chain");
+
+      const valueWei = parseDeployValue(deployValue);
+      const parsedArgs = parseConstructorArgs(constructorArgs);
       let result: { address: string; deployTxHash: string };
 
+      if (chargeKimi) {
+        const kimiBalance = await getKimiBalance(signer, account);
+        if (kimiBalance < DEPLOY_BURN_AMOUNT) throw new Error("KIMI 余额不足，需要至少 20,000 KIMI");
+      }
+
+      setDeployPhase("deploy");
       if (mode === "factory") {
-        const argsBytes = constructorArgs.trim() ? new TextEncoder().encode(constructorArgs) : new Uint8Array();
+        const encodedArgs = encodeConstructorArgs(abi, parsedArgs);
         result = await deployViaFactory({
-          signer: wallet.signer,
-          bytecode: bytecode || "0x",
-          args: ethers.hexlify(argsBytes),
-          value: valueWei,
+          signer,
+          bytecode,
+          encodedArgs,
+          constructorValue: valueWei,
         });
       } else {
         result = await deployBytecode({
-          signer: wallet.signer,
+          signer,
           bytecode,
           abi,
-          constructorArgs: parseConstructorArgs(constructorArgs),
+          constructorArgs: parsedArgs,
           value: valueWei,
         });
       }
 
       setContractAddress(result.address);
       setTxHash(result.deployTxHash);
-      setStatus("success");
 
       addToken({
         name: tokenName || "Deployed Contract",
         symbol: tokenSymbol || "DEPLOY",
         address: result.address,
-        deployer: wallet.account || "",
+        deployer: account,
         network: networkLabel,
         chainId: expectedChainId || 56,
         txHash: result.deployTxHash,
@@ -213,17 +242,34 @@ export default function Deploy() {
         message: `合约已部署到 ${networkLabel}: ${result.address}`,
         detail: `tx: ${result.deployTxHash}`,
       });
+      if (chargeKimi) {
+        setDeployPhase("fee");
+        try {
+          const burnResult = await burnKimiTokens({ signer, amount: DEPLOY_BURN_AMOUNT });
+          addLog({ type: "success", message: "KIMI 部署费销毁成功", detail: `tx: ${burnResult.txHash}` });
+        } catch (feeError) {
+          const friendly = formatContractError(feeError, "KIMI 部署费支付失败");
+          setFeeWarning({
+            summary: `合约已经部署，但 20,000 KIMI 费用未完成：${friendly.summary}`,
+            details: friendly.details,
+          });
+          addLog({ type: "error", message: "合约已部署，但 KIMI 费用未完成", detail: friendly.details });
+        }
+      }
+
+      setStatus("success");
       showToast({ type: "success", message: "合约部署成功" });
     } catch (err) {
-      const detail = err instanceof Error ? err.message : String(err);
-      setErrorMessage(detail);
+      const friendly = formatContractError(err, "合约部署失败");
+      setErrorMessage(friendly.summary);
+      setErrorDetails(friendly.details);
       setStatus("error");
       addLog({
         type: "error",
         message: "合约部署失败",
-        detail,
+        detail: friendly.details,
       });
-      showToast({ type: "error", message: "部署失败" });
+      showToast({ type: "error", message: friendly.summary });
     }
   };
 
@@ -233,10 +279,10 @@ export default function Deploy() {
       return;
     }
     if (isWrongNetwork) {
-      await wallet.switchToBSC();
+      if (expectedChainId) await wallet.switchNetwork(expectedChainId);
       return;
     }
-    await runDeploy();
+    await runDeploy(false);
   };
 
   const handleBurnAndDeploy = async () => {
@@ -245,33 +291,10 @@ export default function Deploy() {
       return;
     }
     if (isWrongNetwork) {
-      await wallet.switchToBSC();
+      if (expectedChainId) await wallet.switchNetwork(expectedChainId);
       return;
     }
-    if (!isKimiConfigured) {
-      setErrorMessage("KIMI 代币地址尚未配置，无法执行真实销毁。请使用「快速部署」或在代码中配置 KIMI_TOKEN_ADDRESS。");
-      return;
-    }
-
-    setStatus("pending");
-    setErrorMessage("");
-    setTxHash("");
-    setContractAddress("");
-    addLog({ type: "info", message: "开始销毁部署费", detail: `销毁 ${BURN_AMOUNT} KIMI 后部署合约` });
-
-    try {
-      if (!wallet.signer) throw new Error("钱包未连接");
-      const burnResult = await burnKimiTokens({ signer: wallet.signer, amount: DEPLOY_BURN_AMOUNT });
-      addLog({ type: "success", message: "KIMI 销毁成功", detail: `tx: ${burnResult.txHash}` });
-      showToast({ type: "success", message: "销毁成功，开始部署" });
-      await runDeploy();
-    } catch (err) {
-      const detail = err instanceof Error ? err.message : String(err);
-      setErrorMessage(detail);
-      setStatus("error");
-      addLog({ type: "error", message: "KIMI 销毁失败", detail });
-      showToast({ type: "error", message: "销毁失败" });
-    }
+    await runDeploy(true);
   };
 
   const Accordion = ({ id, title, icon: Icon, children }: { id: string; title: string; icon: React.ElementType; children: React.ReactNode }) => (
@@ -391,12 +414,14 @@ export default function Deploy() {
               <div className="space-y-2">
                 {DEPLOY_MODES.map((m) => {
                   const Icon = m.icon;
+                  const disabled = m.value === "factory" && !IS_DEPLOY_FACTORY_CONFIGURED;
                   return (
                     <button
                       key={m.value}
-                      onClick={() => setMode(m.value)}
+                      onClick={() => !disabled && setMode(m.value)}
+                      disabled={disabled}
                       className={cn(
-                        "flex w-full items-start gap-3 rounded-xl border p-3 text-left transition-all",
+                        "flex w-full items-start gap-3 rounded-xl border p-3 text-left transition-all disabled:cursor-not-allowed disabled:opacity-45",
                         mode === m.value
                           ? "border-[#D0FF00]/50 bg-[#D0FF00]/10"
                           : "border-[#25282C] bg-[#111215] hover:border-[#D0FF00]/30"
@@ -407,22 +432,32 @@ export default function Deploy() {
                         <div className={cn("text-sm font-medium", mode === m.value ? "text-white" : "text-[#9CA3AF]")}>
                           {m.label}
                         </div>
-                        <div className="text-xs text-[#6B7280]">{m.desc}</div>
+                        <div className="text-xs text-[#6B7280]">
+                          {disabled ? "未配置兼容 deploy(bytes,bytes) 的通用部署工厂" : m.desc}
+                        </div>
                       </div>
                     </button>
                   );
                 })}
               </div>
-              {mode === "factory" && DEPLOY_FACTORY_ADDRESS === "0x0000000000000000000000000000000000000000" && (
+              {!IS_DEPLOY_FACTORY_CONFIGURED && (
                 <div className="mt-3 rounded-lg border border-[#FF6B6B]/30 bg-[#FF6B6B]/10 p-3 text-xs text-[#FF6B6B]">
                   <AlertCircle className="mb-1 inline-block h-3.5 w-3.5" />
-                  工厂合约地址尚未配置，请部署后更新 src/lib/contracts/deployer.ts 中的 DEPLOY_FACTORY_ADDRESS
+                  已禁用旧版错误工厂地址。需要工厂部署时，请配置真正兼容 ABI 的 VITE_DEPLOY_FACTORY_ADDRESS。
                 </div>
               )}
             </Accordion>
 
             <Accordion id="bytecode" title="Bytecode / ABI" icon={Code2}>
               <div className="space-y-3">
+                <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-[#2EDEDB]/30 bg-[#2EDEDB]/10 px-3 py-2.5 text-xs font-medium text-[#2EDEDB] transition-colors hover:bg-[#2EDEDB]/15">
+                  <Upload className="h-3.5 w-3.5" />
+                  导入 Hardhat / Foundry Artifact JSON
+                  <input type="file" accept="application/json,.json" onChange={handleArtifactUpload} className="sr-only" />
+                </label>
+                <p className="text-[11px] leading-relaxed text-[#6B7280]">
+                  Solidity 源码不能直接上链。请导入编译 Artifact，或手动填写 creation Bytecode 与 ABI。
+                </p>
                 <div>
                   <label className="mb-1.5 block text-xs text-[#9CA3AF]">Bytecode</label>
                   <textarea
@@ -434,7 +469,7 @@ export default function Deploy() {
                   />
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-xs text-[#9CA3AF]">ABI（手动模式必填）</label>
+                  <label className="mb-1.5 block text-xs text-[#9CA3AF]">ABI（用于校验和编码构造参数）</label>
                   <textarea
                     value={abi}
                     onChange={(e) => setAbi(e.target.value)}
@@ -539,7 +574,7 @@ export default function Deploy() {
                 </div>
                 {isWrongNetwork && (
                   <button
-                    onClick={() => wallet.switchToBSC()}
+                    onClick={() => expectedChainId && wallet.switchNetwork(expectedChainId)}
                     className="w-full rounded-xl border border-[#FF6B6B]/30 bg-[#FF6B6B]/10 py-2.5 text-sm font-medium text-[#FF6B6B] transition-colors hover:bg-[#FF6B6B]/20"
                   >
                     切换到 {networkLabel}
@@ -555,7 +590,7 @@ export default function Deploy() {
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FF6B6B]/10">
                 <Flame className="h-4 w-4 text-[#FF6B6B]" />
               </div>
-              <h3 className="font-semibold text-white">销毁部署费</h3>
+              <h3 className="font-semibold text-white">安全部署并支付 KIMI</h3>
             </div>
 
             <div className="mb-4 rounded-xl border border-[#FF6B6B]/20 bg-[#FF6B6B]/5 p-4 text-center">
@@ -563,33 +598,34 @@ export default function Deploy() {
               <p className="mt-1 text-3xl font-bold text-[#FF6B6B]">{BURN_AMOUNT} KIMI</p>
             </div>
 
-            {!isKimiConfigured && (
+            <div className="mb-4 flex items-start gap-2 rounded-xl border border-[#D0FF00]/25 bg-[#D0FF00]/5 p-3 text-xs text-[#C7E879]">
+              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>系统会先校验 Bytecode、ABI、构造参数并完成部署，确认合约地址后才请求销毁 {BURN_AMOUNT} KIMI。</span>
+            </div>
+            {network !== "bsc" && (
               <div className="mb-4 flex items-start gap-2 rounded-xl border border-[#FF6B6B]/30 bg-[#FF6B6B]/10 p-3 text-xs text-[#FF6B6B]">
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>KIMI 代币地址尚未配置，当前「销毁并部署」不可用。请使用下方的「快速部署」，或提供 KIMI 合约地址后重新配置。</span>
-              </div>
-            )}
-
-            {isKimiConfigured && (
-              <div className="mb-4 flex items-start gap-2 rounded-xl border border-[#FF6B6B]/30 bg-[#FF6B6B]/10 p-3 text-xs text-[#FF6B6B]">
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>代币销毁是不可撤销的操作，将真实转出 {BURN_AMOUNT} KIMI 到销毁地址，请确认后再继续。</span>
+                <span>KIMI 费用只支持 BNB Smart Chain；其他网络请使用下方的钱包直接部署。</span>
               </div>
             )}
 
             <button
               onClick={handleBurnAndDeploy}
-              disabled={status === "pending" || !isKimiConfigured}
+              disabled={status === "pending" || network !== "bsc"}
               className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#FF6B6B]/30 bg-[#FF6B6B]/10 py-3 text-sm font-semibold text-[#FF6B6B] transition-all hover:bg-[#FF6B6B]/20 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {status === "pending" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Flame className="h-4 w-4" />}
-              {!isKimiConfigured
-                ? "KIMI 地址未配置"
-                : !wallet.isConnected
-                  ? "连接钱包并销毁部署"
-                  : isWrongNetwork
-                    ? "切换网络并部署"
-                    : "确认销毁并部署"}
+              {!wallet.isConnected
+                ? "连接钱包并安全部署"
+                : isWrongNetwork
+                  ? "切换网络并部署"
+                  : status === "pending"
+                    ? deployPhase === "preflight"
+                      ? "正在校验部署参数…"
+                      : deployPhase === "fee"
+                        ? "部署成功，正在支付 KIMI…"
+                        : "正在部署合约…"
+                    : "安全部署并支付 KIMI"}
             </button>
           </div>
 
@@ -599,14 +635,22 @@ export default function Deploy() {
               <Rocket className="h-4 w-4 text-[#2EDEDB]" />
               <h3 className="font-semibold text-white">快速部署</h3>
             </div>
-            <p className="mb-4 text-xs text-[#9CA3AF]">跳过销毁费模拟，直接使用钱包部署到 {networkLabel}</p>
+            <p className="mb-4 text-xs text-[#9CA3AF]">不收取 KIMI 平台费，仍会执行 Bytecode、ABI、构造参数和 Gas 预检。</p>
             <button
               onClick={handleDeploy}
-              disabled={status === "pending" || (mode === "factory" && DEPLOY_FACTORY_ADDRESS === "0x0000000000000000000000000000000000000000")}
+              disabled={status === "pending" || (mode === "factory" && !IS_DEPLOY_FACTORY_CONFIGURED)}
               className="kimi-btn-primary w-full disabled:cursor-not-allowed disabled:opacity-40"
             >
               {status === "pending" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Rocket className="h-4 w-4" />}
-              {status === "pending" ? "部署中..." : !wallet.isConnected ? "连接钱包" : isWrongNetwork ? "切换网络" : "一键部署"}
+              {status === "pending"
+                ? deployPhase === "preflight"
+                  ? "正在预检…"
+                  : "部署中…"
+                : !wallet.isConnected
+                  ? "连接钱包"
+                  : isWrongNetwork
+                    ? "切换网络"
+                    : "钱包直接部署"}
             </button>
           </div>
 
@@ -628,7 +672,7 @@ export default function Deploy() {
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-[#9CA3AF]">合约地址</span>
                       <div className="flex items-center gap-2">
-                        <code className="font-mono text-white">{contractAddress}</code>
+                        <code className="max-w-[180px] truncate font-mono text-white sm:max-w-[280px]">{contractAddress}</code>
                         <button onClick={() => copyText(contractAddress, "address")} className="text-[#9CA3AF] hover:text-white">
                           {copiedField === "address" ? <CheckCircle className="h-3.5 w-3.5 text-[#D0FF00]" /> : <Copy className="h-3.5 w-3.5" />}
                         </button>
@@ -645,7 +689,7 @@ export default function Deploy() {
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-[#9CA3AF]">交易哈希</span>
                       <div className="flex items-center gap-2">
-                        <code className="font-mono text-white">{txHash}</code>
+                        <code className="max-w-[180px] truncate font-mono text-white sm:max-w-[280px]">{txHash}</code>
                         <button onClick={() => copyText(txHash, "tx")} className="text-[#9CA3AF] hover:text-white">
                           {copiedField === "tx" ? <CheckCircle className="h-3.5 w-3.5 text-[#D0FF00]" /> : <Copy className="h-3.5 w-3.5" />}
                         </button>
@@ -663,10 +707,10 @@ export default function Deploy() {
                 </div>
               )}
 
-              {status === "error" && (
-                <div className="flex items-start gap-2 text-sm text-[#FF6B6B]">
-                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                  <span className="break-all">{errorMessage}</span>
+              {status === "error" && <TransactionError summary={errorMessage} details={errorDetails} />}
+              {status === "success" && feeWarning && (
+                <div className="mt-4">
+                  <TransactionError summary={feeWarning.summary} details={feeWarning.details} />
                 </div>
               )}
             </div>
@@ -679,9 +723,10 @@ export default function Deploy() {
               <span className="text-sm font-medium text-white">部署流程</span>
             </div>
             <ol className="list-decimal space-y-1 pl-4 text-xs text-[#9CA3AF]">
-              <li>粘贴 Solidity 源码或 Bytecode + ABI</li>
+              <li>导入编译 Artifact，或填写 creation Bytecode + ABI</li>
               <li>选择目标网络并连接钱包</li>
-              <li>确认销毁费用后点击部署</li>
+              <li>系统先预检参数与 Gas，再请求钱包部署</li>
+              <li>选择 KIMI 模式时，部署成功后才支付费用</li>
               <li>成功后可在「已发代币」查看</li>
             </ol>
           </div>

@@ -14,13 +14,18 @@ contract KIMI is ERC20, ERC20Burnable, Ownable {
         string memory name,
         string memory symbol,
         uint256 initialSupply
-    ) ERC20(name, symbol) Ownable() {
+    ) ERC20(name, symbol) Ownable(msg.sender) {
+        require(bytes(name).length != 0, "KIMI_NAME_EMPTY");
+        require(bytes(symbol).length != 0, "KIMI_SYMBOL_EMPTY");
+        require(initialSupply != 0, "KIMI_SUPPLY_ZERO");
         _mint(msg.sender, initialSupply);
     }
 
     /// @notice Allows the owner to mint additional KIMI.
     /// @dev Use with caution; intended for liquidity bootstrapping only.
     function mint(address to, uint256 amount) external onlyOwner {
+        require(to != address(0), "KIMI_TO_ZERO");
+        require(amount != 0, "KIMI_AMOUNT_ZERO");
         _mint(to, amount);
     }
 }

@@ -18,17 +18,17 @@ export function Toast() {
     toast.type === "success" ? CheckCircle : toast.type === "error" ? AlertCircle : Info;
 
   return (
-    <div className="fixed bottom-6 right-6 z-[100] toast-enter">
+    <div className="fixed bottom-4 left-4 right-4 z-[100] toast-enter sm:bottom-6 sm:left-auto sm:right-6">
       <div
         className={cn(
-          "flex items-center gap-3 rounded-xl border px-4 py-3 shadow-xl",
+          "mx-auto flex w-full max-w-md items-center gap-3 rounded-xl border px-4 py-3 shadow-xl sm:mx-0",
           toast.type === "success" && "border-[#D0FF00]/30 bg-[#15171A] text-[#D0FF00]",
           toast.type === "error" && "border-[#FF6B6B]/30 bg-[#15171A] text-[#FF6B6B]",
           toast.type === "info" && "border-[#2EDEDB]/30 bg-[#15171A] text-[#2EDEDB]"
         )}
       >
         <Icon className="h-5 w-5 shrink-0" />
-        <span className="max-w-[280px] text-sm font-medium text-white sm:max-w-sm">
+        <span className="min-w-0 flex-1 break-words text-sm font-medium text-white">
           {toast.message}
         </span>
         <button
