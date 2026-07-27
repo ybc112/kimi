@@ -286,7 +286,7 @@ export default function Chat() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between shrink-0">
         <div>
           <h2 className="kimi-page-title">金库生成</h2>
-          <p className="kimi-page-subtitle">Vault AI · 基于 Kimi + Flap Tax Vault V2 规范生成合约代码</p>
+          <p className="kimi-page-subtitle">Kimi AI · 基于 Flap Tax Vault V2 规范生成合约代码</p>
         </div>
         <div className="flex items-center gap-2">
           <button

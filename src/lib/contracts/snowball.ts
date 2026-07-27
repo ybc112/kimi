@@ -187,7 +187,7 @@ function parseAddressList(raw: string): string[] {
   return raw
     .split(/[\n,]/)
     .map((s) => s.trim())
-    .filter((s) => s.length > 0);
+    .filter((s) => s.length > 0 && ethers.isAddress(s));
 }
 
 function parseQuotaList(raw: string): bigint[] {

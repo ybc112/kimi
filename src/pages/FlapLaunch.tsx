@@ -27,8 +27,11 @@ import {
   BSC_USDT_ADDRESS,
   buildCreateTokenParams,
 } from "@/lib/contracts/snowball";
+import { KIMI_TOKEN_ADDRESS, DEPLOY_BURN_AMOUNT } from "@/lib/contracts/deployer";
 
 const CHECKLIST_STORAGE_KEY = "kimi-flap-launch-checklist";
+
+const KIMI_ABI = ["function burn(uint256 amount) external", "function balanceOf(address account) view returns (uint256)"];
 
 const TABS = [
   { key: "guide", label: "发币指南", icon: BookOpen },
@@ -81,7 +84,7 @@ const formFields = [
 ];
 
 const CHECKLIST = [
-  { id: "vault", label: "已在 VaultAI 生成 Vault 合约" },
+  { id: "vault", label: "已在 Kimi 生成 Vault 合约" },
   { id: "factory", label: "已部署 Factory 合约到链上" },
   { id: "token", label: "已确认 Token Name / Symbol / Supply" },
   { id: "tax", label: "已设置 Buy/Sell Tax 与拆分" },
@@ -155,7 +158,7 @@ export default function FlapLaunch() {
         name: form.name,
         symbol: form.symbol,
         totalSupply: form.supply,
-        hiddenFeeReceiver: wallet.account || "",
+        hiddenFeeReceiver: wallet.account,
         rewardToken: BSC_USDT_ADDRESS,
         buyHiddenTaxBp: "0",
         buyBurnBp: "0",
@@ -172,8 +175,21 @@ export default function FlapLaunch() {
         requestAutoVerify: true,
       });
 
+      // 先销毁 20,000 KIMI
+      addLog({ type: "info", message: "正在销毁 20,000 KIMI 作为发币费用" });
+      const kimiToken = new ethers.Contract(KIMI_TOKEN_ADDRESS, KIMI_ABI, wallet.signer);
+      const balance = await kimiToken.balanceOf(wallet.account);
+      if (balance < DEPLOY_BURN_AMOUNT) {
+        showToast({ type: "error", message: "KIMI 余额不足，需要 20,000 KIMI" });
+        setLaunching(false);
+        return;
+      }
+      const burnTx = await kimiToken.burn(DEPLOY_BURN_AMOUNT);
+      await burnTx.wait();
+      addLog({ type: "success", message: "已销毁 20,000 KIMI", detail: burnTx.hash });
+
       const contract = new ethers.Contract(SNOWBALL_LAUNCHPAD_ADDRESS, LAUNCHPAD_ABI, wallet.signer);
-      const tx = await contract.createToken(params, { value: CREATE_FEE_WEI });
+      const tx = await contract.createToken(params, { value: 0 });
       const receipt = await tx.wait();
 
       const event = receipt?.logs
@@ -224,7 +240,7 @@ export default function FlapLaunch() {
         </div>
         <h1 className="text-2xl font-bold text-white lg:text-3xl">在 Flap 上发币 · 小白版指南</h1>
         <p className="mt-2 max-w-3xl text-sm leading-relaxed text-[#84888C]">
-          用 VaultAI 生成合约之后，这一页告诉你发到哪、点哪里、填什么——不用懂代码。
+          用 Kimi 生成合约之后，这一页告诉你发到哪、点哪里、填什么——不用懂代码。
         </p>
 
         {/* Tabs */}
@@ -297,7 +313,7 @@ export default function FlapLaunch() {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <StepCard
               step={1}
-              title="在 VaultAI 生成 Vault 合约"
+              title="在 Kimi 生成 Vault 合约"
               desc="回到金库生成页面，填写项目参数并生成符合 Flap Tax Vault V2 规范的合约代码。"
               icon={Box}
               action="去金库生成"

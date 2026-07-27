@@ -46,7 +46,7 @@ const features = [
   },
   {
     title: "Flap 发币",
-    description: "VaultAI 生成合约后，手把手教你把代币发到 Flap 平台。",
+    description: "Kimi 生成合约后，手把手教你把代币发到 Flap 平台。",
     icon: CircleDollarSign,
     to: "/flap-launch",
     color: "#2EDEDB",

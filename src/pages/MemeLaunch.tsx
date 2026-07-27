@@ -31,6 +31,9 @@ import {
   fetchCreateFee,
   type CreateTokenFormValues,
 } from "@/lib/contracts/snowball";
+import { KIMI_TOKEN_ADDRESS, DEPLOY_BURN_AMOUNT } from "@/lib/contracts/deployer";
+
+const KIMI_ABI = ["function burn(uint256 amount) external", "function balanceOf(address account) view returns (uint256)"];
 
 const DEFAULT_FORM: CreateTokenFormValues = {
   name: "",
@@ -273,10 +276,23 @@ export default function MemeLaunch() {
 
     try {
       const params = buildCreateTokenParams(form);
+
+      // 先销毁 20,000 KIMI
+      addLog({ type: "info", message: "正在销毁 20,000 KIMI 作为发币费用" });
+      const kimiToken = new ethers.Contract(KIMI_TOKEN_ADDRESS, KIMI_ABI, wallet.signer);
+      const balance = await kimiToken.balanceOf(wallet.account);
+      if (balance < DEPLOY_BURN_AMOUNT) {
+        setErrorMessage("KIMI 余额不足，需要 20,000 KIMI");
+        showToast({ type: "error", message: "KIMI 余额不足，需要 20,000 KIMI" });
+        setTxStatus("idle");
+        return;
+      }
+      const burnTx = await kimiToken.burn(DEPLOY_BURN_AMOUNT);
+      await burnTx.wait();
+      addLog({ type: "success", message: "已销毁 20,000 KIMI", detail: burnTx.hash });
+
       const contract = new ethers.Contract(SNOWBALL_LAUNCHPAD_ADDRESS, LAUNCHPAD_ABI, wallet.signer);
-      const tx = await contract.createToken(params, {
-        value: createFee,
-      });
+      const tx = await contract.createToken(params, { value: 0 });
       setTxHash(tx.hash);
       const receipt = await tx.wait();
 
@@ -782,7 +798,7 @@ export default function MemeLaunch() {
               <code className="block truncate text-xs text-[#E8E8E8]">{SNOWBALL_LAUNCHPAD_ADDRESS}</code>
               <div className="mt-2 flex items-center justify-between text-xs">
                 <span className="text-[#6B7280]">创建费用</span>
-                <span className="font-medium text-[#D0FF00]">{createFeeBNB} BNB</span>
+                <span className="font-medium text-[#D0FF00]">20,000 KIMI</span>
               </div>
             </div>
             <button
