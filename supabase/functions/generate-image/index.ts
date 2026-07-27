@@ -35,7 +35,7 @@ serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { prompt, size = "1024x1024", model = "dall-e-3", n = 1 } = body;
+    const { prompt, size = "1024x1024", model = "gpt-image-2", n = 1, response_format = "b64_json" } = body;
 
     if (!prompt || typeof prompt !== "string") {
       return new Response(JSON.stringify({ error: "prompt is required" }), {
@@ -52,7 +52,7 @@ serve(async (req) => {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({ model, prompt, n, size }),
+      body: JSON.stringify({ model, prompt, n, size, response_format }),
     });
 
     const rawText = await response.text();

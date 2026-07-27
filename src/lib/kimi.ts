@@ -48,10 +48,11 @@ export interface GenerateImageRequest {
 export async function generateImage(request: GenerateImageRequest): Promise<string> {
   const { data, error } = await supabase.functions.invoke("generate-image", {
     body: {
-      model: request.model || "dall-e-3",
+      model: request.model || "gpt-image-2",
       prompt: request.prompt,
       n: request.n ?? 1,
       size: request.size || "1024x1024",
+      response_format: "b64_json",
     },
   });
 
@@ -59,11 +60,17 @@ export async function generateImage(request: GenerateImageRequest): Promise<stri
     throw new Error(error.message || "Image API error");
   }
 
-  const url = data?.data?.[0]?.url;
+  const item = data?.data?.[0];
+  const b64 = item?.b64_json;
+  const url = item?.url;
 
-  if (typeof url !== "string") {
-    throw new Error("Invalid image API response format");
+  if (typeof b64 === "string") {
+    return `data:image/png;base64,${b64}`;
   }
 
-  return url;
+  if (typeof url === "string") {
+    return url;
+  }
+
+  throw new Error("Invalid image API response format");
 }
