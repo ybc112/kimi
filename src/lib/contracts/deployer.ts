@@ -1,7 +1,8 @@
 import { ethers } from "ethers";
 
-// TODO: 用户部署工厂合约后，替换为真实地址
-export const DEPLOY_FACTORY_ADDRESS = "0x0000000000000000000000000000000000000000";
+// 雪球普通发币工厂合约（BSC mainnet）
+// 如需重新部署，可运行 多零直发发射台/scripts/deploy-snowball-launchpad.js
+export const DEPLOY_FACTORY_ADDRESS: string = "0x972D488F3e952b11a13b96C0aCCECbA9855A97EC";
 
 export const BSC_RPC_URL = "https://bsc-dataseed.binance.org/";
 export const BSC_CHAIN_ID = 56;
