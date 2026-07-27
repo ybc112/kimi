@@ -3,12 +3,15 @@ import path from "node:path";
 import solc from "solc";
 
 const projectRoot = process.cwd();
-const entry = "contracts/KIMI.sol";
+const contracts = [
+  { entry: "contracts/KIMI.sol", contractName: "KIMI" },
+  { entry: "contracts/FixedSupplyToken.sol", contractName: "FixedSupplyToken" },
+];
 const input = {
   language: "Solidity",
-  sources: {
-    [entry]: { content: fs.readFileSync(path.join(projectRoot, entry), "utf8") },
-  },
+  sources: Object.fromEntries(
+    contracts.map(({ entry }) => [entry, { content: fs.readFileSync(path.join(projectRoot, entry), "utf8") }])
+  ),
   settings: {
     optimizer: { enabled: true, runs: 200 },
     outputSelection: {
@@ -38,6 +41,8 @@ for (const issue of errors) {
 }
 if (errors.some((issue) => issue.severity === "error")) process.exit(1);
 
-const kimi = output.contracts?.[entry]?.KIMI;
-if (!kimi?.evm?.bytecode?.object) throw new Error("KIMI compilation produced no creation bytecode");
-console.log(`KIMI contract compiled successfully (${kimi.evm.bytecode.object.length / 2} creation bytes).`);
+for (const { entry, contractName } of contracts) {
+  const artifact = output.contracts?.[entry]?.[contractName];
+  if (!artifact?.evm?.bytecode?.object) throw new Error(`${contractName} compilation produced no creation bytecode`);
+  console.log(`${contractName} compiled successfully (${artifact.evm.bytecode.object.length / 2} creation bytes).`);
+}

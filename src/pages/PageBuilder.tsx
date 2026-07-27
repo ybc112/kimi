@@ -239,8 +239,30 @@ export default function PageBuilder() {
           </div>
         </div>
 
+        <div className="flex rounded-xl border border-[#25282C] bg-[#111215] p-1 lg:hidden">
+          {[
+            { key: "code", label: "代码编辑", icon: Code2 },
+            { key: "preview", label: "实时预览", icon: Eye },
+          ].map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key as typeof activeTab)}
+              className={cn(
+                "flex flex-1 items-center justify-center gap-2 rounded-lg py-2.5 text-xs font-medium transition-colors",
+                activeTab === tab.key ? "bg-[#D0FF00]/10 text-[#D0FF00]" : "text-[#6B7280]"
+              )}
+            >
+              <tab.icon className="h-3.5 w-3.5" />
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
         {/* Middle: code editor 37.5% */}
-        <div className="flex flex-col rounded-2xl border border-[#25282C] bg-[#111215] lg:col-span-3 lg:min-h-0">
+        <div className={cn(
+          "min-h-[380px] flex-col rounded-2xl border border-[#25282C] bg-[#111215] lg:col-span-3 lg:flex lg:min-h-0",
+          activeTab === "code" ? "flex" : "hidden"
+        )}>
           <div className="flex items-center justify-between border-b border-[#25282C] px-4 py-3">
             <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
               <Code2 className="h-4 w-4 text-[#2EDEDB]" />
@@ -293,7 +315,10 @@ export default function PageBuilder() {
         </div>
 
         {/* Right: preview 37.5% */}
-        <div className="flex flex-col rounded-2xl border border-[#25282C] bg-[#111215] lg:col-span-3 lg:min-h-0">
+        <div className={cn(
+          "min-h-[420px] flex-col rounded-2xl border border-[#25282C] bg-[#111215] lg:col-span-3 lg:flex lg:min-h-0",
+          activeTab === "preview" ? "flex" : "hidden"
+        )}>
           <div className="flex items-center justify-between border-b border-[#25282C] px-4 py-3">
             <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
               <Eye className="h-4 w-4 text-[#D0FF00]" />
@@ -327,28 +352,6 @@ export default function PageBuilder() {
                 <RefreshCw className="h-4 w-4" />
               </button>
             </div>
-          </div>
-
-          {/* Mobile tab switcher */}
-          <div className="flex border-b border-[#25282C] lg:hidden">
-            {[
-              { key: "code", label: "代码", icon: Code2 },
-              { key: "preview", label: "预览", icon: Eye },
-            ].map((t) => (
-              <button
-                key={t.key}
-                onClick={() => setActiveTab(t.key as typeof activeTab)}
-                className={cn(
-                  "flex flex-1 items-center justify-center gap-2 py-2.5 text-xs font-medium transition-colors",
-                  activeTab === t.key
-                    ? "border-b-2 border-[#D0FF00] text-[#D0FF00]"
-                    : "text-[#6B7280]"
-                )}
-              >
-                <t.icon className="h-3.5 w-3.5" />
-                {t.label}
-              </button>
-            ))}
           </div>
 
           <div className="relative flex flex-1 items-center justify-center overflow-auto bg-[#0A0B0D] p-4">

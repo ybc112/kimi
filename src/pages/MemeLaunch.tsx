@@ -11,6 +11,8 @@ import {
   ExternalLink,
   RefreshCw,
   Dices,
+  Settings2,
+  ChevronDown,
 } from "lucide-react";
 import { ethers } from "ethers";
 import { useAppStore } from "@/store";
@@ -142,6 +144,7 @@ export default function MemeLaunch() {
   const [imageError, setImageError] = useState<string>("");
   const [copied, setCopied] = useState(false);
   const [createFee, setCreateFee] = useState<string>(CREATE_FEE_WEI);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   useEffect(() => {
     const saved = readSavedMeme();
@@ -389,7 +392,7 @@ export default function MemeLaunch() {
   }, [createFee]);
 
   return (
-    <div className="flex min-h-[calc(100vh-7rem)] flex-col gap-4 lg:h-[calc(100vh-3rem)]">
+    <div className="flex min-h-[calc(100vh-7rem)] flex-col gap-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="kimi-page-title">Meme 一键发射</h2>
@@ -423,10 +426,11 @@ export default function MemeLaunch() {
           )}
         </div>
       </div>
+      {wallet.error && <TransactionError summary={wallet.error} />}
 
-      <div className="flex flex-1 flex-col gap-4 lg:flex-row lg:overflow-hidden">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
         {/* Left: Concept */}
-        <div className="flex w-full flex-col gap-4 lg:w-[420px] lg:overflow-auto">
+        <div className="flex w-full flex-col gap-4 lg:w-[420px]">
           <div className="kimi-card">
             <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-white">
               <Sparkles className="h-4 w-4 text-[#D0FF00]" />
@@ -499,7 +503,7 @@ export default function MemeLaunch() {
                   </button>
                 </div>
             </div>
-            <div className="relative flex aspect-square flex-col items-center justify-center overflow-hidden rounded-xl border border-dashed border-[#303236] bg-[#0A0B0D] p-4 text-center">
+            <div className="relative flex aspect-[4/3] flex-col items-center justify-center overflow-hidden rounded-xl border border-dashed border-[#303236] bg-[#0A0B0D] p-4 text-center sm:aspect-square">
               {imageUrl ? (
                 <img
                   src={imageUrl}
@@ -543,12 +547,12 @@ export default function MemeLaunch() {
         </div>
 
         {/* Right: Token params */}
-        <div className="flex flex-1 flex-col rounded-2xl border border-[#25282C] bg-[#111215] lg:min-h-0 lg:overflow-hidden">
+        <div className="flex flex-1 flex-col rounded-2xl border border-[#25282C] bg-[#111215] lg:self-start">
           <div className="border-b border-[#25282C] px-5 py-4">
             <h3 className="font-semibold text-white">代币参数</h3>
           </div>
 
-          <div className="flex-1 space-y-5 overflow-auto p-5">
+          <div className="space-y-5 p-5">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <div>
                 <label className="mb-1.5 block text-xs text-[#9CA3AF]">代币名称</label>
@@ -582,6 +586,25 @@ export default function MemeLaunch() {
               </div>
             </div>
 
+            <button
+              type="button"
+              onClick={() => setAdvancedOpen((open) => !open)}
+              className="flex w-full items-center justify-between gap-3 rounded-xl border border-[#303236] bg-[#0A0B0D] px-4 py-3 text-left transition-colors hover:border-[#D0FF00]/30"
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <Settings2 className="h-4 w-4 shrink-0 text-[#2EDEDB]" />
+                <span>
+                  <span className="block text-sm font-medium text-white">高级参数</span>
+                  <span className="block text-[11px] text-[#6B7280]">税率、分红地址、白名单与限制模式</span>
+                </span>
+              </span>
+              <span className="flex shrink-0 items-center gap-2 text-xs text-[#D0FF00]">
+                买 {totalBuyTax.toFixed(2)}% · 卖 {totalSellTax.toFixed(2)}%
+                <ChevronDown className={cn("h-4 w-4 transition-transform", advancedOpen && "rotate-180")} />
+              </span>
+            </button>
+
+            {advancedOpen && <div className="space-y-5 rounded-xl border border-[#25282C] bg-[#0A0B0D]/40 p-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <label className="mb-1.5 block text-xs text-[#9CA3AF]">隐藏费接收地址</label>
@@ -716,6 +739,7 @@ export default function MemeLaunch() {
                 请求自动验证
               </label>
             </div>
+            </div>}
 
             {txStatus !== "idle" && (
               <div
@@ -821,7 +845,7 @@ export default function MemeLaunch() {
             {formValidationMessage && <p className="mb-3 text-xs text-[#FF6B6B]">{formValidationMessage}</p>}
             <button
               onClick={handleLaunch}
-              disabled={txStatus === "pending" || !canLaunch}
+              disabled={txStatus === "pending" || (wallet.isConnected && wallet.isBSC && !canLaunch)}
               className="kimi-btn-primary w-full disabled:cursor-not-allowed disabled:opacity-40"
             >
               {txStatus === "pending" ? (

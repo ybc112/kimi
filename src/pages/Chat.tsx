@@ -28,8 +28,7 @@ import { useAppStore } from "@/store";
 import { useContractData } from "@/hooks/useContractData";
 import { DEFAULT_MODEL, sendChatMessage } from "@/lib/kimi";
 import { FLAP_SYSTEM_PROMPT } from "@/lib/flapContext";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { SyntaxHighlighter, vscDarkPlus } from "@/lib/syntaxHighlighter";
 import { cn } from "@/lib/utils";
 
 const vaultTypes = [

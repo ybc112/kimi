@@ -9,6 +9,7 @@ Kimi Flap Vault 是一个面向 BNB Smart Chain 的合约生成、Meme 发币、
 - KIMI 平台费改为代币/合约创建成功后再销毁，避免“费用已扣但创建失败”。
 - 旧版误配置的 `0x972D...` 是 Snowball 发币 Factory，并不支持 `deploy(bytes,bytes)`；通用工厂模式现默认禁用。
 - 合约部署要求真实 creation Bytecode + ABI，可直接导入 Hardhat/Foundry Artifact JSON。
+- 合约部署内置“固定总量”和“可增发 / 可销毁”两个已编译 ERC-20 模板，并实时显示 3 项部署就绪检查。
 - 钱包支持 BSC、Ethereum、Arbitrum 与 Base 的正确网络切换。
 - 底层 ethers 错误改为简短提示，完整技术详情折叠显示，避免移动端被超长交易数据撑开。
 
@@ -31,14 +32,23 @@ npm run dev
 npm run verify
 ```
 
-该命令会依次执行 TypeScript、ESLint、单元测试、KIMI Solidity 编译和生产构建。
+该命令会依次执行 TypeScript、ESLint、单元测试、两个 Solidity 模板编译、模板一致性检查和生产构建。
 
 ## 合约部署
 
+### 内置 ERC-20 模板
+
+1. 打开“合约部署”，选择“固定总量 ERC-20”或“可增发 / 可销毁 ERC-20”。
+2. 填写代币名称、符号和完整代币数量；页面会自动填充 creation Bytecode、ABI 与构造参数。
+3. 等待“部署就绪检查”显示 `3/3`，选择网络并连接钱包。
+4. 点击“钱包直接部署”。钱包发送交易前还会执行一次链上 Gas 预检。
+
+### 自定义合约 / Artifact
+
 1. 使用 Hardhat、Foundry 或 Remix 编译 Solidity。
-2. 在“合约部署”页面导入 Artifact JSON，或填写 creation Bytecode、ABI 与构造参数。
-3. 选择目标网络并连接钱包。
-4. 页面先执行参数和 Gas 预检，通过后才会请求钱包部署。
+2. 在“合约部署”页面导入单个合约 Artifact JSON，或填写 creation Bytecode、ABI 与构造参数。
+3. 页面支持 Hardhat、Foundry，以及只包含一个可部署合约的 solc 标准 JSON 输出；多合约输出请先导出目标合约 Artifact。
+4. 选择目标网络并连接钱包；参数和 Gas 预检通过后才会请求钱包部署。
 
 通用部署工厂默认关闭。如确有一个实现以下接口的合约，可在 Vercel 环境中配置：
 

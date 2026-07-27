@@ -21,6 +21,7 @@ import {
 import { KimiIcon } from "@/components/KimiIcon";
 import { useContractData } from "@/hooks/useContractData";
 import { cn } from "@/lib/utils";
+import { SNOWBALL_LAUNCHPAD_ADDRESS } from "@/lib/contracts/snowball";
 
 const features = [
   {
@@ -39,7 +40,7 @@ const features = [
   },
   {
     title: "合约部署",
-    description: "粘贴 Solidity 代码或 Bytecode，一键部署到 BNB Smart Chain 等主流网络。",
+    description: "使用已编译 ERC-20 模板或 Artifact，一键部署到 BNB Smart Chain 等主流网络。",
     icon: Rocket,
     to: "/deploy",
     color: "#D0FF00",
@@ -91,7 +92,11 @@ const features = [
 const stats = [
   { label: "AI 模型", value: "Kimi / DeepSeek-v4-flash", icon: Sparkles },
   { label: "部署网络", value: "BNB Smart Chain Mainnet", icon: Activity },
-  { label: "发射台合约", value: "0x972D...A97EC", icon: ShieldCheck },
+  {
+    label: "Snowball 发射台",
+    value: `${SNOWBALL_LAUNCHPAD_ADDRESS.slice(0, 8)}...${SNOWBALL_LAUNCHPAD_ADDRESS.slice(-6)}`,
+    icon: ShieldCheck,
+  },
 ];
 
 const activityIcons: Record<string, React.ElementType> = {

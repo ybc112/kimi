@@ -55,6 +55,57 @@ export interface DeploymentResult {
   deployTxHash: string;
 }
 
+export interface DeploymentArtifact {
+  abi: unknown[];
+  bytecode: string;
+  contractName?: string;
+}
+
+type ArtifactLike = {
+  abi?: unknown;
+  bytecode?: string | { object?: string };
+  evm?: { bytecode?: { object?: string } };
+  contractName?: unknown;
+};
+
+function readArtifactCandidate(value: unknown, fallbackName?: string): DeploymentArtifact | null {
+  if (!value || typeof value !== "object") return null;
+  const artifact = value as ArtifactLike;
+  const bytecode =
+    typeof artifact.bytecode === "string"
+      ? artifact.bytecode
+      : artifact.bytecode?.object || artifact.evm?.bytecode?.object || "";
+  if (!Array.isArray(artifact.abi) || !bytecode) return null;
+  return {
+    abi: artifact.abi,
+    bytecode: normalizeBytecode(bytecode.startsWith("0x") ? bytecode : `0x${bytecode}`),
+    contractName: typeof artifact.contractName === "string" ? artifact.contractName : fallbackName,
+  };
+}
+
+export function extractDeploymentArtifact(value: unknown): DeploymentArtifact {
+  const direct = readArtifactCandidate(value);
+  if (direct) return direct;
+
+  const contracts = (value as { contracts?: unknown } | null)?.contracts;
+  if (contracts && typeof contracts === "object") {
+    const candidates: DeploymentArtifact[] = [];
+    for (const sourceContracts of Object.values(contracts)) {
+      if (!sourceContracts || typeof sourceContracts !== "object") continue;
+      for (const [contractName, artifact] of Object.entries(sourceContracts)) {
+        const candidate = readArtifactCandidate(artifact, contractName);
+        if (candidate) candidates.push(candidate);
+      }
+    }
+    if (candidates.length === 1) return candidates[0];
+    if (candidates.length > 1) {
+      throw new Error(`标准 JSON 中包含 ${candidates.length} 个可部署合约，请导出并上传单个合约 Artifact`);
+    }
+  }
+
+  throw new Error("Artifact 必须包含 abi 和 creation bytecode；支持 Hardhat、Foundry 与 solc 标准 JSON");
+}
+
 function parseAbi(abi: string): ethers.InterfaceAbi {
   if (!abi.trim()) throw new Error("请填写合约 ABI");
   let parsed: unknown;

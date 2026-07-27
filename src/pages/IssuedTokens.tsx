@@ -149,7 +149,82 @@ export default function IssuedTokens() {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-[#25282C] bg-[#111215] overflow-hidden">
+      <div className="space-y-3 md:hidden">
+        {filtered.map((token) => {
+          const status = statusConfig[token.status];
+          const StatusIcon = status.icon;
+          const tcfg = typeConfig[token.type];
+          const TypeIcon = tcfg.icon;
+          const explorerBase = EXPLORERS[token.network] ?? EXPLORERS["BNB Smart Chain"];
+          return (
+            <article key={token.id} className="rounded-2xl border border-[#25282C] bg-[#111215] p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className={cn("flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[#25282C] bg-[#0A0B0D]", !token.imageUrl && tcfg.color)}>
+                    {token.imageUrl ? (
+                      <img src={token.imageUrl} alt={token.symbol} className="h-full w-full object-cover" loading="lazy" />
+                    ) : (
+                      <TypeIcon className="h-4 w-4" />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="truncate font-semibold text-white">{token.name}</h3>
+                    <div className="mt-1 flex items-center gap-2 text-xs text-[#6B7280]">
+                      <span className="rounded bg-[#25282C] px-1.5 py-0.5 font-medium text-[#D0FF00]">{token.symbol}</span>
+                      <span>{tcfg.label}</span>
+                    </div>
+                  </div>
+                </div>
+                <span className={cn("inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium", status.bg, status.color)}>
+                  <StatusIcon className="h-3 w-3" />
+                  {status.label}
+                </span>
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-3 rounded-xl border border-[#25282C] bg-[#0A0B0D] p-3 text-xs">
+                <div className="col-span-2">
+                  <p className="text-[#6B7280]">合约地址</p>
+                  <code className="mt-1 block truncate text-[#E8E8E8]">{token.address}</code>
+                </div>
+                <div>
+                  <p className="text-[#6B7280]">网络</p>
+                  <p className="mt-1 text-[#E8E8E8]">{token.network}</p>
+                </div>
+                <div>
+                  <p className="text-[#6B7280]">部署时间</p>
+                  <p className="mt-1 text-[#E8E8E8]">{formatTime(token.createdAt)}</p>
+                </div>
+              </div>
+
+              <div className="mt-3 grid grid-cols-4 gap-2">
+                <button onClick={() => handleCopy(token)} className="kimi-btn-secondary px-2 py-2 text-xs" title="复制地址">
+                  {copiedId === token.id ? <CheckCircle2 className="h-3.5 w-3.5 text-[#D0FF00]" /> : <Copy className="h-3.5 w-3.5" />}
+                </button>
+                <a href={`${explorerBase}/${token.address}`} target="_blank" rel="noreferrer" className="kimi-btn-secondary px-2 py-2 text-xs" title="查看浏览器">
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+                <button onClick={() => handleShare(token)} className="kimi-btn-secondary px-2 py-2 text-xs" title="分享">
+                  <Share2 className="h-3.5 w-3.5" />
+                </button>
+                <button onClick={() => removeToken(token.id)} className="flex items-center justify-center rounded-xl border border-[#25282C] bg-[#0A0B0D] px-2 py-2 text-[#9CA3AF] transition-colors hover:border-[#FF6B6B]/30 hover:text-[#FF6B6B]" title="删除">
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </article>
+          );
+        })}
+        {filtered.length === 0 && (
+          <div className="rounded-2xl border border-[#25282C] bg-[#111215]">
+            <Empty
+              icon={<List className="h-7 w-7" />}
+              title={tokens.length === 0 ? "暂无代币" : "未找到匹配代币"}
+              subtitle={tokens.length === 0 ? "部署合约或一键发币后，代币会出现在这里" : "尝试调整搜索或筛选条件"}
+            />
+          </div>
+        )}
+      </div>
+
+      <div className="hidden overflow-hidden rounded-2xl border border-[#25282C] bg-[#111215] md:block">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
@@ -275,15 +350,15 @@ export default function IssuedTokens() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-3 gap-2 sm:gap-4">
         {[
           { label: "已部署代币", value: stats.total.toString() },
           { label: "已激活", value: stats.success.toString() },
           { label: "部署中", value: stats.pending.toString() },
         ].map((stat) => (
-          <div key={stat.label} className="kimi-card">
+          <div key={stat.label} className="kimi-card p-3 sm:p-5 lg:p-6">
             <p className="text-xs text-[#6B7280]">{stat.label}</p>
-            <p className="mt-1 text-2xl font-bold text-white">{stat.value}</p>
+            <p className="mt-1 text-xl font-bold text-white sm:text-2xl">{stat.value}</p>
           </div>
         ))}
       </div>

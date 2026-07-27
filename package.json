@@ -11,7 +11,9 @@
     "check": "tsc -b --noEmit",
     "test": "vitest run",
     "contracts:compile": "node scripts/compile-contracts.mjs",
-    "verify": "npm run check && npm run lint && npm run test && npm run contracts:compile && npm run build"
+    "templates:generate": "node scripts/generate-deploy-templates.mjs",
+    "templates:check": "node scripts/generate-deploy-templates.mjs --check",
+    "verify": "npm run check && npm run lint && npm run test && npm run contracts:compile && npm run templates:check && npm run build"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.8",

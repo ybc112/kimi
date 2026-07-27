@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   BookOpen,
@@ -72,8 +72,8 @@ const formFields = [
   },
   {
     name: "Vault Factory",
-    desc: "SnowballLaunchpad Factory 合约地址，用于创建代币。",
-    example: SNOWBALL_LAUNCHPAD_ADDRESS,
+    desc: "外部 Flap 流程中，由你部署并符合 Flap 规范的 Vault Factory 地址。",
+    example: "0xYourVaultFactoryAddress",
   },
   {
     name: "Dividend Token",
@@ -83,12 +83,51 @@ const formFields = [
 ];
 
 const CHECKLIST = [
-  { id: "vault", label: "已在 Kimi 生成 Vault 合约" },
-  { id: "factory", label: "已部署 Factory 合约到链上" },
+  { id: "flow", label: "已选择站内一键发币或外部 Flap 流程" },
+  { id: "factory", label: "外部流程已编译并部署 Vault / Factory" },
   { id: "token", label: "已确认 Token Name / Symbol / Supply" },
   { id: "tax", label: "已设置 Buy/Sell Tax 与拆分" },
   { id: "wallet", label: "已连接钱包并切换到 BSC" },
 ];
+
+interface InternalLaunchForm {
+  name: string;
+  symbol: string;
+  supply: string;
+  tax: string;
+}
+
+function buildInternalLaunchParams(form: InternalLaunchForm, receiver: string) {
+  if (!/^\d+$/.test(form.tax.trim())) throw new Error("Tax 必须是非负整数 Basis Points");
+  const taxBasisPoints = Number(form.tax);
+  if (!Number.isSafeInteger(taxBasisPoints) || taxBasisPoints < 0 || taxBasisPoints > 2500) {
+    throw new Error("Tax 必须在 0 到 2500 Basis Points（0% 到 25%）之间");
+  }
+  const taxPercent = (taxBasisPoints / 100).toString();
+  return buildCreateTokenParams(
+    {
+      name: form.name,
+      symbol: form.symbol,
+      totalSupply: form.supply,
+      hiddenFeeReceiver: receiver,
+      rewardToken: BSC_USDT_ADDRESS,
+      buyHiddenTaxBp: "0",
+      buyBurnBp: "0",
+      buyLiquidityBp: "0",
+      buyDividendBp: taxPercent,
+      sellHiddenTaxBp: "0",
+      sellBurnBp: "0",
+      sellLiquidityBp: "0",
+      sellDividendBp: taxPercent,
+      ordinaryWhitelist: "",
+      limitAccounts: "",
+      limitQuotas: "",
+      limitModeEnabled: false,
+      requestAutoVerify: true,
+    },
+    { defaultHiddenFeeReceiver: receiver, defaultRewardToken: BSC_USDT_ADDRESS }
+  );
+}
 
 function readChecklist(): Record<string, boolean> {
   try {
@@ -113,7 +152,7 @@ export default function FlapLaunch() {
   const [activeTab, setActiveTab] = useState<TabKey>("guide");
   const [checked, setChecked] = useState<Record<string, boolean>>(() => readChecklist());
 
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<InternalLaunchForm>({
     name: "",
     symbol: "",
     supply: "1000000000",
@@ -124,6 +163,15 @@ export default function FlapLaunch() {
   const [result, setResult] = useState<{ address: string; txHash: string } | null>(null);
   const [launchError, setLaunchError] = useState<{ summary: string; details: string } | null>(null);
   const [feeWarning, setFeeWarning] = useState<{ summary: string; details: string } | null>(null);
+  const internalValidationMessage = useMemo(() => {
+    try {
+      buildInternalLaunchParams(form, wallet.account || "0x000000000000000000000000000000000000dEaD");
+      return "";
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
+  }, [form, wallet.account]);
+  const taxPercentLabel = Number.isFinite(Number(form.tax)) ? (Number(form.tax) / 100).toFixed(2) : "0.00";
 
   useEffect(() => {
     saveChecklist(checked);
@@ -149,11 +197,6 @@ export default function FlapLaunch() {
       await wallet.switchToBSC();
       return;
     }
-    if (!form.name.trim() || !form.symbol.trim() || !form.supply) {
-      showToast({ type: "error", message: "请填写完整的代币信息" });
-      return;
-    }
-
     setLaunching(true);
     setLaunchStep("preflight");
     setLaunchError(null);
@@ -162,29 +205,7 @@ export default function FlapLaunch() {
     addLog({ type: "info", message: "正在预检站内发币参数" });
 
     try {
-      const params = buildCreateTokenParams(
-        {
-          name: form.name,
-          symbol: form.symbol,
-          totalSupply: form.supply,
-          hiddenFeeReceiver: wallet.account,
-          rewardToken: BSC_USDT_ADDRESS,
-          buyHiddenTaxBp: "0",
-          buyBurnBp: "0",
-          buyLiquidityBp: "0",
-          buyDividendBp: form.tax,
-          sellHiddenTaxBp: "0",
-          sellBurnBp: "0",
-          sellLiquidityBp: "0",
-          sellDividendBp: form.tax,
-          ordinaryWhitelist: "",
-          limitAccounts: "",
-          limitQuotas: "",
-          limitModeEnabled: false,
-          requestAutoVerify: true,
-        },
-        { defaultHiddenFeeReceiver: wallet.account, defaultRewardToken: BSC_USDT_ADDRESS }
-      );
+      const params = buildInternalLaunchParams(form, wallet.account);
 
       const balance = await getKimiBalance(wallet.signer, wallet.account);
       if (balance < DEPLOY_BURN_AMOUNT) {
@@ -250,7 +271,7 @@ export default function FlapLaunch() {
         </div>
         <h1 className="text-2xl font-bold text-white lg:text-3xl">在 Flap 上发币 · 小白版指南</h1>
         <p className="mt-2 max-w-3xl text-sm leading-relaxed text-[#84888C]">
-          用 Kimi 生成合约之后，这一页告诉你发到哪、点哪里、填什么——不用懂代码。
+          站内一键发币无需自备 Factory；外部 Flap 流程则需要先编译并部署符合规范的 Vault / Factory。
         </p>
 
         {/* Tabs */}
@@ -331,8 +352,8 @@ export default function FlapLaunch() {
             />
             <StepCard
               step={2}
-              title="把 Factory 合约部署到链上"
-              desc="复制生成的合约 Bytecode 与 ABI，到合约部署页面上链；记下 Factory 地址。"
+              title="编译并部署 Vault / Factory"
+              desc="Solidity 源码不能直接上链。先使用 Hardhat、Foundry 或 Remix 编译 Artifact，再到部署页上链并记下地址。"
               icon={Rocket}
               action="去合约部署"
               onClick={() => navigate("/deploy")}
@@ -386,7 +407,7 @@ export default function FlapLaunch() {
               className="flex items-center justify-center gap-2 rounded-xl border border-[#23262A] bg-[#15171A] p-4 text-sm font-medium text-white transition-all hover:border-[#D0FF00]/30 hover:bg-[#1A1D21]"
             >
               <Rocket className="h-4 w-4 text-[#2EDEDB]" />
-              第二步：部署 Factory
+              第二步：编译并部署
               <ArrowRight className="h-4 w-4 text-[#2EDEDB]" />
             </button>
             <button
@@ -444,7 +465,10 @@ export default function FlapLaunch() {
               />
             </div>
             <div>
-              <label className="mb-1.5 block text-xs text-[#84888C]">Tax (Basis Points)</label>
+              <label className="mb-1.5 flex items-center justify-between gap-2 text-xs text-[#84888C]">
+                <span>Tax (Basis Points)</span>
+                <span className="text-[#D0FF00]">≈ {taxPercentLabel}%</span>
+              </label>
               <input
                 type="text"
                 value={form.tax}
@@ -455,9 +479,10 @@ export default function FlapLaunch() {
             </div>
           </div>
 
-          <div className="mt-4 rounded-lg border border-[#2EDEDB]/20 bg-[#2EDEDB]/5 p-3 text-xs text-[#2EDEDB]">
-            <Info className="mb-1 inline-block h-3.5 w-3.5" />
-            简化模式将使用默认分红代币 USDT，税收全部作为分红。如需更复杂参数请使用 Meme 发射或外部 Flap 页面。
+          <div className="mt-4 rounded-lg border border-[#2EDEDB]/20 bg-[#2EDEDB]/5 p-3 text-xs leading-relaxed text-[#2EDEDB]">
+            <Info className="mb-1 mr-1 inline-block h-3.5 w-3.5" />
+            站内模式直接调用已验证的 Snowball Factory，并使用默认分红代币 USDT；税收全部作为分红。
+            <code className="mt-2 block break-all rounded bg-black/20 p-2 text-[11px] text-white">{SNOWBALL_LAUNCHPAD_ADDRESS}</code>
           </div>
 
           {result && (
@@ -469,11 +494,11 @@ export default function FlapLaunch() {
               <div className="flex flex-col gap-1 text-xs text-[#84888C]">
                 <div className="flex items-center gap-2">
                   <span>合约地址</span>
-                  <code className="text-white">{result.address}</code>
+                  <code className="min-w-0 break-all text-white">{result.address}</code>
                 </div>
                 <div className="flex items-center gap-2">
                   <span>交易哈希</span>
-                  <code className="text-white">{result.txHash}</code>
+                  <code className="min-w-0 break-all text-white">{result.txHash}</code>
                 </div>
               </div>
             </div>
@@ -491,9 +516,21 @@ export default function FlapLaunch() {
             </div>
           )}
 
+          {wallet.error && (
+            <div className="mt-4">
+              <TransactionError summary={wallet.error} />
+            </div>
+          )}
+
+          {internalValidationMessage && (
+            <p className="mt-4 rounded-lg border border-[#FF6B6B]/25 bg-[#FF6B6B]/10 px-3 py-2 text-xs text-[#FF8A8A]">
+              {internalValidationMessage}
+            </p>
+          )}
+
           <button
             onClick={handleInternalLaunch}
-            disabled={launching}
+            disabled={launching || (wallet.isConnected && wallet.isBSC && Boolean(internalValidationMessage))}
             className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-[#D0FF00] py-3 text-sm font-semibold text-black transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {launching ? (
@@ -515,6 +552,8 @@ export default function FlapLaunch() {
               ? "连接钱包"
               : !wallet.isBSC
               ? "切换到 BSC"
+              : internalValidationMessage
+              ? "请先完善发币参数"
               : "确认创建代币"}
           </button>
         </div>

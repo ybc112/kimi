@@ -1,4 +1,4 @@
-import { useState, useEffect, type ChangeEvent } from "react";
+import { useState, useEffect, useMemo, type ChangeEvent } from "react";
 import {
   Rocket,
   Wallet,
@@ -19,9 +19,9 @@ import {
   Upload,
   ChevronDown,
   ChevronUp,
+  Coins,
 } from "lucide-react";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { SyntaxHighlighter, vscDarkPlus } from "@/lib/syntaxHighlighter";
 import { useWallet } from "@/hooks/useWallet";
 import { cn } from "@/lib/utils";
 import {
@@ -36,7 +36,10 @@ import {
   parseDeployValue,
   IS_DEPLOY_FACTORY_CONFIGURED,
   CHAIN_IDS,
+  normalizeBytecode,
+  extractDeploymentArtifact,
 } from "@/lib/contracts/deployer";
+import { buildTemplateDeployment, DEPLOY_TEMPLATES } from "@/lib/contracts/deployTemplates";
 import { useAppStore } from "@/store";
 import { useIssuedTokens } from "@/hooks/useIssuedTokens";
 import { useContractData } from "@/hooks/useContractData";
@@ -74,6 +77,8 @@ export default function Deploy() {
   const [deployValue, setDeployValue] = useState("0");
   const [tokenName, setTokenName] = useState("");
   const [tokenSymbol, setTokenSymbol] = useState("DEPLOY");
+  const [templateSupply, setTemplateSupply] = useState("1000000000");
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
 
   const [status, setStatus] = useState<"idle" | "pending" | "success" | "error">("idle");
   const [txHash, setTxHash] = useState("");
@@ -97,9 +102,54 @@ export default function Deploy() {
     if (saved) setCode(saved);
   }, []);
 
+  useEffect(() => {
+    const template = DEPLOY_TEMPLATES.find((item) => item.id === selectedTemplateId);
+    if (!template) return;
+    try {
+      const deployment = buildTemplateDeployment(template, {
+        name: tokenName,
+        symbol: tokenSymbol,
+        supply: templateSupply,
+      });
+      setConstructorArgs(deployment.constructorArgs);
+    } catch {
+      setConstructorArgs("");
+    }
+  }, [selectedTemplateId, templateSupply, tokenName, tokenSymbol]);
+
   const expectedChainId = CHAIN_IDS[network] ?? networks.find((n) => n.value === network)?.chainId;
   const isWrongNetwork = wallet.isConnected && wallet.chainId !== expectedChainId;
   const networkLabel = networks.find((n) => n.value === network)?.label || "BNB Smart Chain";
+  const walletNetworkLabel = networks.find((item) => item.chainId === wallet.chainId)?.label || (wallet.chainId ? `Chain ${wallet.chainId}` : "未连接");
+  const nativeSymbol = wallet.chainId === 56 ? "BNB" : "ETH";
+
+  const deploymentChecks = useMemo(() => {
+    const check = (label: string, action: () => void) => {
+      try {
+        action();
+        return { label, pass: true, detail: "" };
+      } catch (error) {
+        return { label, pass: false, detail: error instanceof Error ? error.message : String(error) };
+      }
+    };
+    return [
+      check("Creation Bytecode", () => { normalizeBytecode(bytecode); }),
+      check("ABI 与构造参数", () => {
+        const template = DEPLOY_TEMPLATES.find((item) => item.id === selectedTemplateId);
+        const args = template
+          ? buildTemplateDeployment(template, {
+              name: tokenName,
+              symbol: tokenSymbol,
+              supply: templateSupply,
+            }).constructorArgs
+          : constructorArgs;
+        encodeConstructorArgs(abi, parseConstructorArgs(args));
+      }),
+      check("附带原生币金额", () => { parseDeployValue(deployValue); }),
+    ];
+  }, [abi, bytecode, constructorArgs, deployValue, selectedTemplateId, templateSupply, tokenName, tokenSymbol]);
+  const deploymentInputError = deploymentChecks.find((item) => !item.pass)?.detail || "";
+  const deploymentReady = !deploymentInputError;
 
   const copyText = async (text: string, field: "address" | "tx") => {
     if (!text) return;
@@ -146,22 +196,51 @@ export default function Deploy() {
     event.target.value = "";
     if (!file) return;
     try {
-      const artifact = JSON.parse(await file.text()) as {
-        abi?: unknown[];
-        bytecode?: string | { object?: string };
-        contractName?: string;
-      };
-      const artifactBytecode =
-        typeof artifact.bytecode === "string" ? artifact.bytecode : artifact.bytecode?.object || "";
-      if (!Array.isArray(artifact.abi) || !artifactBytecode) {
-        throw new Error("Artifact 必须包含 abi 和 bytecode 字段");
-      }
+      const artifact = extractDeploymentArtifact(JSON.parse(await file.text()));
       setAbi(JSON.stringify(artifact.abi, null, 2));
-      setBytecode(artifactBytecode.startsWith("0x") ? artifactBytecode : `0x${artifactBytecode}`);
+      setBytecode(artifact.bytecode);
       if (artifact.contractName) setTokenName(artifact.contractName);
+      setSelectedTemplateId("");
+      setErrorMessage("");
+      setErrorDetails("");
+      setStatus("idle");
       showToast({ type: "success", message: "Artifact 已导入，可进行部署预检" });
     } catch (error) {
       const friendly = formatContractError(error, "Artifact 导入失败");
+      setErrorMessage(friendly.summary);
+      setErrorDetails(friendly.details);
+      setStatus("error");
+    }
+  };
+
+  const handleTemplateSelect = (templateId: string) => {
+    try {
+      const template = DEPLOY_TEMPLATES.find((item) => item.id === templateId);
+      if (!template) throw new Error("未找到部署模板");
+      const defaultName = tokenName.trim() || (template.id === "fixed-supply" ? "Kimi Token" : "Kimi Plus");
+      const currentSymbol = tokenSymbol.trim();
+      const defaultSymbol = !currentSymbol || currentSymbol === "DEPLOY"
+        ? template.id === "fixed-supply" ? "KIMI" : "KPLUS"
+        : currentSymbol;
+      const deployment = buildTemplateDeployment(template, {
+        name: defaultName,
+        symbol: defaultSymbol,
+        supply: templateSupply,
+      });
+      setTokenName(deployment.name);
+      setTokenSymbol(deployment.symbol);
+      setAbi(deployment.abi);
+      setBytecode(deployment.bytecode);
+      setConstructorArgs(deployment.constructorArgs);
+      setMode("manual");
+      setSelectedTemplateId(template.id);
+      setOpenGroups((current) => ({ ...current, bytecode: true, args: true }));
+      setErrorMessage("");
+      setErrorDetails("");
+      setStatus("idle");
+      showToast({ type: "success", message: `${template.title} 已载入，可连接钱包部署` });
+    } catch (error) {
+      const friendly = formatContractError(error, "模板载入失败");
       setErrorMessage(friendly.summary);
       setErrorDetails(friendly.details);
       setStatus("error");
@@ -193,7 +272,15 @@ export default function Deploy() {
       if (chargeKimi && network !== "bsc") throw new Error("KIMI 部署费目前只支持 BNB Smart Chain");
 
       const valueWei = parseDeployValue(deployValue);
-      const parsedArgs = parseConstructorArgs(constructorArgs);
+      const template = DEPLOY_TEMPLATES.find((item) => item.id === selectedTemplateId);
+      const currentConstructorArgs = template
+        ? buildTemplateDeployment(template, {
+            name: tokenName,
+            symbol: tokenSymbol,
+            supply: templateSupply,
+          }).constructorArgs
+        : constructorArgs;
+      const parsedArgs = parseConstructorArgs(currentConstructorArgs);
       let result: { address: string; deployTxHash: string };
 
       if (chargeKimi) {
@@ -319,49 +406,108 @@ export default function Deploy() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="kimi-page-title">合约部署</h2>
-          <p className="kimi-page-subtitle">Contract Deploy · 连接钱包，选择网络，将合约部署到目标链</p>
+          <p className="kimi-page-subtitle">Contract Deploy · 使用内置模板或编译 Artifact，预检后部署到目标链</p>
         </div>
       </div>
+
+      <section className="rounded-2xl border border-[#D0FF00]/20 bg-gradient-to-br from-[#15180C] via-[#111215] to-[#0E1012] p-4 sm:p-5">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2 text-sm font-semibold text-white">
+              <Coins className="h-4 w-4 text-[#D0FF00]" />
+              一键部署标准代币
+            </div>
+            <p className="mt-1 text-xs text-[#9CA3AF]">模板已在本项目中通过 solc 编译，无需另外准备 Bytecode 或 ABI。</p>
+          </div>
+          <span className="w-fit rounded-full border border-[#D0FF00]/25 bg-[#D0FF00]/10 px-2.5 py-1 text-[11px] font-medium text-[#D0FF00]">
+            已编译 · 可预检
+          </span>
+        </div>
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
+          <div className="grid gap-3 sm:grid-cols-2">
+            {DEPLOY_TEMPLATES.map((template) => (
+              <button
+                key={template.id}
+                onClick={() => handleTemplateSelect(template.id)}
+                className={cn(
+                  "rounded-xl border p-4 text-left transition-all",
+                  selectedTemplateId === template.id
+                    ? "border-[#D0FF00]/50 bg-[#D0FF00]/10"
+                    : "border-[#303236] bg-[#0A0B0D]/80 hover:border-[#D0FF00]/30"
+                )}
+              >
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="text-sm font-semibold text-white">{template.title}</span>
+                  {selectedTemplateId === template.id && <CheckCircle className="h-4 w-4 text-[#D0FF00]" />}
+                </div>
+                <p className="text-xs leading-relaxed text-[#9CA3AF]">{template.description}</p>
+                <span className="mt-3 inline-flex text-xs font-medium text-[#D0FF00]">
+                  {selectedTemplateId === template.id ? "模板已载入" : "载入模板 →"}
+                </span>
+              </button>
+            ))}
+          </div>
+          <div className="rounded-xl border border-[#303236] bg-[#0A0B0D]/80 p-4">
+            <label className="mb-1.5 block text-xs font-medium text-[#9CA3AF]">初始总供应量</label>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={templateSupply}
+              onChange={(event) => setTemplateSupply(event.target.value)}
+              className="kimi-input font-mono"
+              placeholder="1000000000"
+            />
+            <p className="mt-2 text-[11px] leading-relaxed text-[#6B7280]">填写完整代币数量，不需要手动添加 18 位小数。</p>
+          </div>
+        </div>
+      </section>
 
       {/* Main: left 55% code/params, right 45% deploy info */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         {/* Left: 55% */}
         <div className="flex flex-col gap-4 lg:col-span-7">
           {/* Code editor */}
-          <div className="flex flex-col rounded-2xl border border-[#25282C] bg-[#111215] overflow-hidden">
-            <div className="flex items-center justify-between border-b border-[#25282C] px-4 py-3">
+          <div className="flex flex-col overflow-hidden rounded-2xl border border-[#25282C] bg-[#111215]">
+            <div className="flex items-center justify-between gap-2 border-b border-[#25282C] px-4 py-3">
               <div className="flex items-center gap-2 text-sm font-semibold text-white">
                 <FileCode className="h-4 w-4 text-[#2EDEDB]" />
-                合约源码
+                源码参考
               </div>
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleLoadLocal}
-                  className="kimi-btn-secondary py-1.5 text-xs"
+                  className="kimi-btn-secondary px-2.5 py-1.5 text-xs"
+                  title="加载 AI 生成的本地 Solidity 源码"
                 >
                   <Upload className="h-3.5 w-3.5" />
-                  加载
+                  <span className="hidden sm:inline">加载</span>
                 </button>
                 <button
                   onClick={handleCopyCode}
                   disabled={!code}
-                  className="kimi-btn-secondary py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-40"
+                  className="kimi-btn-secondary px-2.5 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-40"
+                  title="复制 Solidity 源码"
                 >
                   {copiedCode ? <Check className="h-3.5 w-3.5 text-[#D0FF00]" /> : <Copy className="h-3.5 w-3.5" />}
-                  复制
+                  <span className="hidden sm:inline">复制</span>
                 </button>
                 <button
                   onClick={handleDownload}
                   disabled={!code}
-                  className="kimi-btn-secondary py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-40"
+                  className="kimi-btn-secondary px-2.5 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-40"
+                  title="下载 Solidity 源码"
                 >
                   <Download className="h-3.5 w-3.5" />
-                  下载
+                  <span className="hidden sm:inline">下载</span>
                 </button>
               </div>
             </div>
 
-            <div className="relative min-h-[360px] flex-1 bg-[#0A0B0D]">
+            <div className="border-b border-[#25282C] bg-[#0A0B0D] px-4 py-2 text-[11px] text-[#6B7280]">
+              源码仅用于阅读和保存；真正部署使用下方的 creation Bytecode 与 ABI。
+            </div>
+
+            <div className="relative min-h-[220px] flex-1 bg-[#0A0B0D] sm:min-h-[260px] lg:min-h-[280px]">
               <textarea
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
@@ -441,9 +587,8 @@ export default function Deploy() {
                 })}
               </div>
               {!IS_DEPLOY_FACTORY_CONFIGURED && (
-                <div className="mt-3 rounded-lg border border-[#FF6B6B]/30 bg-[#FF6B6B]/10 p-3 text-xs text-[#FF6B6B]">
-                  <AlertCircle className="mb-1 inline-block h-3.5 w-3.5" />
-                  已禁用旧版错误工厂地址。需要工厂部署时，请配置真正兼容 ABI 的 VITE_DEPLOY_FACTORY_ADDRESS。
+                <div className="mt-3 rounded-lg border border-[#2EDEDB]/20 bg-[#2EDEDB]/5 p-3 text-xs leading-relaxed text-[#7DE9E7]">
+                  当前默认使用兼容性更高的钱包直接部署。自定义 Factory 属于高级功能，仅在配置兼容 ABI 后启用。
                 </div>
               )}
             </Accordion>
@@ -462,7 +607,10 @@ export default function Deploy() {
                   <label className="mb-1.5 block text-xs text-[#9CA3AF]">Bytecode</label>
                   <textarea
                     value={bytecode}
-                    onChange={(e) => setBytecode(e.target.value)}
+                    onChange={(e) => {
+                      setBytecode(e.target.value);
+                      setSelectedTemplateId("");
+                    }}
                     placeholder="0x60806040..."
                     rows={3}
                     className="kimi-input font-mono text-xs"
@@ -472,7 +620,10 @@ export default function Deploy() {
                   <label className="mb-1.5 block text-xs text-[#9CA3AF]">ABI（用于校验和编码构造参数）</label>
                   <textarea
                     value={abi}
-                    onChange={(e) => setAbi(e.target.value)}
+                    onChange={(e) => {
+                      setAbi(e.target.value);
+                      setSelectedTemplateId("");
+                    }}
                     placeholder='[{"inputs":[],"name":"...","type":"constructor"}]'
                     rows={3}
                     className="kimi-input font-mono text-xs"
@@ -552,6 +703,7 @@ export default function Deploy() {
                   {wallet.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}
                   连接钱包
                 </button>
+                {wallet.error && <TransactionError summary={wallet.error} />}
               </div>
             ) : (
               <div className="space-y-3">
@@ -565,12 +717,12 @@ export default function Deploy() {
                   <span className="text-xs text-[#9CA3AF]">网络</span>
                   <span className="flex items-center gap-1.5 text-sm text-white">
                     <span className={cn("h-2 w-2 rounded-full", wallet.isBSC ? "bg-[#D0FF00]" : "bg-[#FF6B6B]")} />
-                    {wallet.chainId === 56 ? "BNB Smart Chain" : wallet.chainId === 1 ? "Ethereum" : `Chain ${wallet.chainId}`}
+                    {walletNetworkLabel}
                   </span>
                 </div>
                 <div className="flex items-center justify-between rounded-xl border border-[#25282C] bg-[#0A0B0D] px-4 py-3">
                   <span className="text-xs text-[#9CA3AF]">余额</span>
-                  <span className="text-sm font-medium text-white">{Number(wallet.balance).toFixed(4)} BNB</span>
+                  <span className="text-sm font-medium text-white">{Number(wallet.balance).toFixed(4)} {nativeSymbol}</span>
                 </div>
                 {isWrongNetwork && (
                   <button
@@ -582,6 +734,30 @@ export default function Deploy() {
                 )}
               </div>
             )}
+          </div>
+
+          <div className="kimi-card">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4 text-[#D0FF00]" />
+                <h3 className="font-semibold text-white">部署就绪检查</h3>
+              </div>
+              <span className={cn("text-xs font-semibold", deploymentReady ? "text-[#D0FF00]" : "text-[#FF6B6B]") }>
+                {deploymentChecks.filter((item) => item.pass).length}/{deploymentChecks.length}
+              </span>
+            </div>
+            <div className="space-y-2">
+              {deploymentChecks.map((item) => (
+                <div key={item.label} className="flex items-center justify-between gap-3 rounded-lg border border-[#25282C] bg-[#0A0B0D] px-3 py-2 text-xs">
+                  <span className="text-[#9CA3AF]">{item.label}</span>
+                  <span className={cn("flex items-center gap-1 font-medium", item.pass ? "text-[#D0FF00]" : "text-[#FF6B6B]") }>
+                    {item.pass ? <CheckCircle className="h-3.5 w-3.5" /> : <AlertCircle className="h-3.5 w-3.5" />}
+                    {item.pass ? "通过" : "待完善"}
+                  </span>
+                </div>
+              ))}
+            </div>
+            {deploymentInputError && <p className="mt-3 text-xs leading-relaxed text-[#FF8A8A]">{deploymentInputError}</p>}
           </div>
 
           {/* Burn fee card */}
@@ -611,7 +787,7 @@ export default function Deploy() {
 
             <button
               onClick={handleBurnAndDeploy}
-              disabled={status === "pending" || network !== "bsc"}
+              disabled={status === "pending" || network !== "bsc" || (wallet.isConnected && !isWrongNetwork && !deploymentReady)}
               className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#FF6B6B]/30 bg-[#FF6B6B]/10 py-3 text-sm font-semibold text-[#FF6B6B] transition-all hover:bg-[#FF6B6B]/20 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {status === "pending" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Flame className="h-4 w-4" />}
@@ -625,7 +801,9 @@ export default function Deploy() {
                       : deployPhase === "fee"
                         ? "部署成功，正在支付 KIMI…"
                         : "正在部署合约…"
-                    : "安全部署并支付 KIMI"}
+                    : !deploymentReady
+                      ? "请先完成部署参数"
+                      : "安全部署并支付 KIMI"}
             </button>
           </div>
 
@@ -633,12 +811,12 @@ export default function Deploy() {
           <div className="kimi-card">
             <div className="mb-3 flex items-center gap-2">
               <Rocket className="h-4 w-4 text-[#2EDEDB]" />
-              <h3 className="font-semibold text-white">快速部署</h3>
+              <h3 className="font-semibold text-white">钱包直接部署</h3>
             </div>
             <p className="mb-4 text-xs text-[#9CA3AF]">不收取 KIMI 平台费，仍会执行 Bytecode、ABI、构造参数和 Gas 预检。</p>
             <button
               onClick={handleDeploy}
-              disabled={status === "pending" || (mode === "factory" && !IS_DEPLOY_FACTORY_CONFIGURED)}
+              disabled={status === "pending" || (mode === "factory" && !IS_DEPLOY_FACTORY_CONFIGURED) || (wallet.isConnected && !isWrongNetwork && !deploymentReady)}
               className="kimi-btn-primary w-full disabled:cursor-not-allowed disabled:opacity-40"
             >
               {status === "pending" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Rocket className="h-4 w-4" />}
@@ -650,7 +828,9 @@ export default function Deploy() {
                   ? "连接钱包"
                   : isWrongNetwork
                     ? "切换网络"
-                    : "钱包直接部署"}
+                    : !deploymentReady
+                      ? "请先完成部署参数"
+                      : "钱包直接部署"}
             </button>
           </div>
 

@@ -21,6 +21,7 @@ import {
 import { KimiIcon } from "@/components/KimiIcon";
 import { useWallet } from "@/hooks/useWallet";
 import { cn } from "@/lib/utils";
+import { useAppStore } from "@/store";
 
 const mainNavItems = [
   { to: "/", icon: LayoutDashboard, label: "首页" },
@@ -40,6 +41,7 @@ const moreNavItems = [
 
 export function Header() {
   const wallet = useWallet();
+  const { showToast } = useAppStore();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -59,6 +61,10 @@ export function Header() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (wallet.error) showToast({ type: "error", message: wallet.error });
+  }, [showToast, wallet.error]);
 
   const displayNetwork =
     wallet.chainId === 56
