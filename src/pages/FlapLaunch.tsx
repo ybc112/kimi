@@ -70,8 +70,8 @@ const formFields = [
   },
   {
     name: "Vault Factory",
-    desc: "你在「合约部署」页面部署好的 Factory 合约地址。",
-    example: "0x972D488F3e952b11a13b96C0aCCECbA9855A97EC",
+    desc: "SnowballLaunchpad Factory 合约地址，用于创建代币。",
+    example: SNOWBALL_LAUNCHPAD_ADDRESS,
   },
   {
     name: "Dividend Token",

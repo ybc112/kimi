@@ -1,8 +1,14 @@
-export const SNOWBALL_LAUNCHPAD_ADDRESS = "0x972D488F3e952b11a13b96C0aCCECbA9855A97EC";
+import { ethers } from "ethers";
+
+export const SNOWBALL_LAUNCHPAD_ADDRESS = "0x08b6e62c01dcE3eACFc558609427348689c7773E";
 
 export const BSC_RPC_URL = "https://bsc-dataseed.binance.org/";
 
-export const CREATE_FEE_WEI = "5000000000000000";
+/** 默认创建费用，启动时会从链上读取最新值 */
+export const DEFAULT_CREATE_FEE_WEI = "5000000000000000";
+
+/** 兼容旧名 */
+export const CREATE_FEE_WEI = DEFAULT_CREATE_FEE_WEI;
 
 export const BSC_USDT_ADDRESS = "0x55d398326f99059fF775485246999027B3197955";
 
@@ -213,4 +219,16 @@ export function buildCreateTokenParams(formValues: CreateTokenFormValues): Creat
     limitModeEnabled: formValues.limitModeEnabled,
     requestAutoVerify: formValues.requestAutoVerify,
   };
+}
+
+/** 从链上读取当前创建费用（单位：wei） */
+export async function fetchCreateFee(): Promise<string> {
+  try {
+    const provider = new ethers.JsonRpcProvider(BSC_RPC_URL);
+    const contract = new ethers.Contract(SNOWBALL_LAUNCHPAD_ADDRESS, LAUNCHPAD_ABI, provider);
+    const fee = await contract.createFee();
+    return fee.toString();
+  } catch {
+    return DEFAULT_CREATE_FEE_WEI;
+  }
 }

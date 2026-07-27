@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import {
   Sparkles,
   Zap,
@@ -28,6 +28,7 @@ import {
   BSC_USDT_ADDRESS,
   LAUNCHPAD_ABI,
   buildCreateTokenParams,
+  fetchCreateFee,
   type CreateTokenFormValues,
 } from "@/lib/contracts/snowball";
 
@@ -132,6 +133,7 @@ export default function MemeLaunch() {
   const [tokenAddress, setTokenAddress] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [copied, setCopied] = useState(false);
+  const [createFee, setCreateFee] = useState<string>(CREATE_FEE_WEI);
 
   useEffect(() => {
     const saved = readSavedMeme();
@@ -142,6 +144,7 @@ export default function MemeLaunch() {
       setAvatar(saved.avatar);
       setImageUrl(saved.imageUrl || "");
     }
+    fetchCreateFee().then(setCreateFee).catch(() => setCreateFee(CREATE_FEE_WEI));
   }, []);
 
   const updateForm = (key: keyof CreateTokenFormValues, value: string | boolean) => {
@@ -251,7 +254,7 @@ export default function MemeLaunch() {
       const params = buildCreateTokenParams(form);
       const contract = new ethers.Contract(SNOWBALL_LAUNCHPAD_ADDRESS, LAUNCHPAD_ABI, wallet.signer);
       const tx = await contract.createToken(params, {
-        value: CREATE_FEE_WEI,
+        value: createFee,
       });
       setTxHash(tx.hash);
       const receipt = await tx.wait();
@@ -317,6 +320,13 @@ export default function MemeLaunch() {
     Number(form.sellDividendBp || 0);
 
   const canLaunch = form.name.trim() && form.symbol.trim() && Number(form.totalSupply || 0) > 0;
+  const createFeeBNB = useMemo(() => {
+    try {
+      return Number(ethers.formatEther(createFee)).toFixed(4);
+    } catch {
+      return "0.0050";
+    }
+  }, [createFee]);
 
   return (
     <div className="flex min-h-[calc(100vh-7rem)] flex-col gap-4 lg:h-[calc(100vh-3rem)]">
@@ -714,6 +724,24 @@ export default function MemeLaunch() {
           </div>
 
           <div className="border-t border-[#25282C] p-5">
+            <div className="mb-4 rounded-xl border border-[#25282C] bg-[#0A0B0D] p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-xs text-[#9CA3AF]">Factory 合约</span>
+                <a
+                  href={`https://bscscan.com/address/${SNOWBALL_LAUNCHPAD_ADDRESS}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-[#D0FF00] hover:underline"
+                >
+                  BscScan <ExternalLink className="h-3 w-3" />
+                </a>
+              </div>
+              <code className="block truncate text-xs text-[#E8E8E8]">{SNOWBALL_LAUNCHPAD_ADDRESS}</code>
+              <div className="mt-2 flex items-center justify-between text-xs">
+                <span className="text-[#6B7280]">创建费用</span>
+                <span className="font-medium text-[#D0FF00]">{createFeeBNB} BNB</span>
+              </div>
+            </div>
             <button
               onClick={handleLaunch}
               disabled={txStatus === "pending" || !canLaunch}
@@ -734,7 +762,7 @@ export default function MemeLaunch() {
                   ? "连接钱包"
                   : !wallet.isBSC
                     ? "切换到 BSC"
-                    : "一键发射（0.005 BNB）"}
+                    : `一键发射（${createFeeBNB} BNB）`}
             </button>
           </div>
         </div>
