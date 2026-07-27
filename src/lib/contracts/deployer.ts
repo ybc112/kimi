@@ -5,8 +5,8 @@ import { ethers } from "ethers";
 export const DEPLOY_FACTORY_ADDRESS: string = "0x972D488F3e952b11a13b96C0aCCECbA9855A97EC";
 
 // KIMI 代币合约地址（BSC mainnet）
-// TODO: 请替换为真实 KIMI 代币地址
-export const KIMI_TOKEN_ADDRESS: string = "0x0000000000000000000000000000000000000000";
+// 已部署并开源验证：https://bscscan.com/address/0x7A4b49cCAaDF69C4FCfd2223F8E3e30dAAb9F123#code
+export const KIMI_TOKEN_ADDRESS: string = "0x7A4b49cCAaDF69C4FCfd2223F8E3e30dAAb9F123";
 
 // 销毁地址：转入此地址即视为销毁
 export const BURN_ADDRESS: string = "0x000000000000000000000000000000000000dEaD";
