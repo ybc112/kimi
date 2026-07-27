@@ -12,7 +12,14 @@ import {
   Loader2,
   Code2,
   Factory,
+  Flame,
+  Info,
+  Layers,
+  Check,
+  Download,
 } from "lucide-react";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { useWallet } from "@/hooks/useWallet";
 import { cn } from "@/lib/utils";
 import {
@@ -26,10 +33,11 @@ import {
 import { useAppStore } from "@/store";
 
 const networks = [
-  { value: "bsc", label: "BNB Smart Chain", icon: "🔶" },
-  { value: "eth", label: "Ethereum", icon: "💠" },
-  { value: "arb", label: "Arbitrum", icon: "🔵" },
-  { value: "base", label: "Base", icon: "🛡️" },
+  { value: "bsc", label: "BNB Smart Chain", icon: "🔶", chainId: 56 },
+  { value: "eth", label: "Ethereum", icon: "💠", chainId: 1 },
+  { value: "arb", label: "Arbitrum One", icon: "🔵", chainId: 42161 },
+  { value: "base", label: "Base", icon: "🛡️", chainId: 8453 },
+  { value: "robinhood", label: "Robinhood Chain", icon: "🟢", chainId: 138, badge: "new" },
 ];
 
 const DEPLOY_MODES = [
@@ -38,6 +46,15 @@ const DEPLOY_MODES = [
 ] as const;
 
 type DeployMode = (typeof DEPLOY_MODES)[number]["value"];
+
+const BURN_AMOUNT = "100,000";
+
+const deploySteps = [
+  { title: "编写或导入合约", desc: "在左侧编辑器粘贴 Solidity 源码，或从金库生成页面导入。" },
+  { title: "选择目标网络", desc: "点击网络标签切换 BNB Smart Chain / Ethereum / Arbitrum / Base / Robinhood Chain。" },
+  { title: "确认销毁费用", desc: "部署需要销毁 100,000 KIMI，销毁后不可撤销，请确认余额充足。" },
+  { title: "编译并部署", desc: "编译通过后连接钱包，点击一键部署将合约发布到链上。" },
+];
 
 export default function Deploy() {
   const { addLog } = useAppStore();
@@ -56,13 +73,14 @@ export default function Deploy() {
   const [contractAddress, setContractAddress] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [copiedField, setCopiedField] = useState<"address" | "tx" | null>(null);
+  const [copiedCode, setCopiedCode] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem("flap-generated-code");
     if (saved) setCode(saved);
   }, []);
 
-  const expectedChainId = CHAIN_IDS[network];
+  const expectedChainId = CHAIN_IDS[network] ?? networks.find((n) => n.value === network)?.chainId;
   const isWrongNetwork = wallet.isConnected && wallet.chainId !== expectedChainId;
 
   const copyText = async (text: string, field: "address" | "tx") => {
@@ -70,6 +88,31 @@ export default function Deploy() {
     await navigator.clipboard.writeText(text);
     setCopiedField(field);
     setTimeout(() => setCopiedField(null), 2000);
+  };
+
+  const handleCopyCode = async () => {
+    if (!code) return;
+    await navigator.clipboard.writeText(code);
+    setCopiedCode(true);
+    setTimeout(() => setCopiedCode(false), 2000);
+  };
+
+  const handleDownload = () => {
+    if (!code) return;
+    const blob = new Blob([code], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "Contract.sol";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleCompile = () => {
+    addLog({ type: "info", message: "编译服务稍后接入", detail: "当前为占位功能，请使用 Remix / Hardhat 本地编译后粘贴 Bytecode 与 ABI" });
+    setErrorMessage("");
   };
 
   const handleDeploy = async () => {
@@ -143,101 +186,188 @@ export default function Deploy() {
     }
   };
 
-  const renderWalletCard = () => (
-    <div className="rounded-xl border border-[#23262A] bg-[#15171A] p-5">
-      <h3 className="mb-4 flex items-center gap-2 text-sm font-medium text-white">
-        <Wallet className="h-4 w-4 text-[#2EDEDB]" />
-        钱包连接
-      </h3>
-      {!wallet.isConnected ? (
-        <div className="space-y-3">
-          <p className="text-xs text-[#84888C]">连接钱包后即可真实部署合约上链</p>
-          <button
-            onClick={wallet.connectWallet}
-            disabled={wallet.loading}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#D0FF00] py-2.5 text-sm font-semibold text-black transition-opacity hover:opacity-90 disabled:opacity-50"
-          >
-            {wallet.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}
-            连接 MetaMask
-          </button>
-          {!wallet.hasMetaMask && <p className="text-xs text-red-400">请安装 MetaMask 插件</p>}
-        </div>
-      ) : (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-[#84888C]">已连接地址</span>
-            <span className="font-mono text-xs text-white">
-              {wallet.account?.slice(0, 6)}...{wallet.account?.slice(-4)}
+  return (
+    <div className="flex min-h-[calc(100vh-8rem)] flex-col gap-6">
+      {/* Title header */}
+      <div className="flex flex-col gap-3 rounded-2xl border border-[#23262A] bg-[#15171A] p-6 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <div className="mb-1 flex items-center gap-3">
+            <h2 className="text-2xl font-bold text-white">合约部署</h2>
+            <span className="rounded border border-[#D0FF00]/30 bg-[#D0FF00]/10 px-2 py-0.5 text-xs font-medium text-[#D0FF00]">
+              DEPLOY · ON-CHAIN
             </span>
           </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-[#84888C]">当前网络</span>
-            <span className={cn("text-xs", wallet.isBSC ? "text-[#D0FF00]" : "text-[#FF6B6B]")}>
-              {wallet.chainId ? `Chain ID ${wallet.chainId}` : "--"}
-            </span>
+          <p className="text-sm text-[#84888C]">
+            连接钱包，选择网络，销毁 KIMI 部署费后将合约真实部署到目标链
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 rounded-lg border border-[#23262A] bg-[#0B0D0E] px-3 py-2 text-xs text-[#9CA3AF]">
+            <Wallet className="h-4 w-4" />
+            {wallet.isConnected ? (
+              <span className={wallet.isBSC ? "text-[#D0FF00]" : "text-white"}>
+                {wallet.account?.slice(0, 6)}...{wallet.account?.slice(-4)}
+              </span>
+            ) : (
+              <span>未连接</span>
+            )}
           </div>
           {isWrongNetwork && (
             <button
               onClick={() => wallet.switchToBSC()}
-              className="w-full rounded-lg border border-[#FF6B6B]/30 bg-[#FF6B6B]/10 py-2 text-xs font-medium text-[#FF6B6B] transition-colors hover:bg-[#FF6B6B]/20"
+              className="rounded-lg border border-[#FF6B6B]/30 bg-[#FF6B6B]/10 px-3 py-2 text-xs font-medium text-[#FF6B6B] transition-colors hover:bg-[#FF6B6B]/20"
             >
-              切换到 {networks.find((n) => n.value === network)?.label}
+              切到 {networks.find((n) => n.value === network)?.label}
             </button>
           )}
-          <button
-            onClick={wallet.disconnectWallet}
-            className="w-full rounded-lg border border-[#303236] bg-[#0B0D0E] py-2 text-xs text-[#9CA3AF] transition-colors hover:text-white"
-          >
-            断开连接
-          </button>
         </div>
-      )}
-    </div>
-  );
-
-  return (
-    <div className="flex min-h-[calc(100vh-7rem)] flex-col gap-4 lg:h-[calc(100vh-3rem)] lg:overflow-hidden">
-      <div>
-        <h2 className="text-xl font-bold text-white">自定义部署合约</h2>
-        <p className="text-xs text-[#84888C]">连接钱包，使用 Bytecode + ABI 或工厂合约真实部署上链</p>
       </div>
 
-      <div className="flex flex-1 flex-col gap-4 lg:flex-row lg:overflow-hidden">
-        {/* Left: Parameters */}
-        <div className="flex w-full flex-col gap-4 lg:w-[42%] lg:min-h-0 lg:overflow-auto">
-          {renderWalletCard()}
-
-          {/* Network */}
-          <div className="rounded-xl border border-[#23262A] bg-[#15171A] p-5">
-            <h3 className="mb-4 flex items-center gap-2 text-sm font-medium text-white">
-              <Rocket className="h-4 w-4 text-[#D0FF00]" />
-              部署网络
-            </h3>
-            <div className="grid grid-cols-2 gap-3">
+      {/* Main editor + burn card */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        {/* Left: code editor */}
+        <div className="flex flex-col gap-4 lg:col-span-2">
+          <div className="flex flex-col rounded-xl border border-[#23262A] bg-[#15171A] overflow-hidden">
+            {/* Network tabs */}
+            <div className="flex items-center gap-1 overflow-x-auto border-b border-[#23262A] p-2">
               {networks.map((n) => (
                 <button
                   key={n.value}
                   onClick={() => setNetwork(n.value)}
                   className={cn(
-                    "flex items-center gap-2 rounded-lg border px-3 py-2.5 text-left text-sm transition-colors",
+                    "flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition-colors",
                     network === n.value
                       ? "border-[#D0FF00]/50 bg-[#D0FF00]/10 text-white"
-                      : "border-[#303236] bg-[#0B0D0E] text-[#9CA3AF] hover:border-[#D0FF00]/30"
+                      : "border-transparent bg-[#0B0D0E] text-[#9CA3AF] hover:border-[#303236] hover:text-white"
                   )}
                 >
                   <span>{n.icon}</span>
-                  <span className="truncate">{n.label}</span>
+                  <span>{n.label}</span>
+                  {n.badge && (
+                    <span className="rounded bg-[#FF6B6B]/20 px-1 py-0.5 text-[10px] text-[#FF6B6B]">{n.badge}</span>
+                  )}
                 </button>
               ))}
             </div>
+
+            {/* Toolbar */}
+            <div className="flex items-center justify-between border-b border-[#23262A] px-4 py-3">
+              <div className="flex items-center gap-2 text-sm font-medium text-white">
+                <FileCode className="h-4 w-4 text-[#D0FF00]" />
+                合约源码
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleCopyCode}
+                  disabled={!code}
+                  className="flex items-center gap-1.5 rounded-lg border border-[#303236] bg-[#0B0D0E] px-2.5 py-1.5 text-xs text-[#9CA3AF] transition-colors hover:border-[#D0FF00]/30 hover:text-white disabled:opacity-40"
+                >
+                  {copiedCode ? <Check className="h-3.5 w-3.5 text-[#D0FF00]" /> : <Copy className="h-3.5 w-3.5" />}
+                  复制
+                </button>
+                <button
+                  onClick={handleDownload}
+                  disabled={!code}
+                  className="flex items-center gap-1.5 rounded-lg border border-[#303236] bg-[#0B0D0E] px-2.5 py-1.5 text-xs text-[#9CA3AF] transition-colors hover:border-[#D0FF00]/30 hover:text-white disabled:opacity-40"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  下载
+                </button>
+                <button
+                  onClick={() => setCode("")}
+                  className="text-xs text-[#84888C] transition-colors hover:text-white"
+                >
+                  清空
+                </button>
+              </div>
+            </div>
+
+            {/* Editor */}
+            <div className="relative min-h-[420px] flex-1 bg-[#0B0D0E]">
+              <textarea
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                placeholder="// 在此粘贴你的 Solidity 合约源码...\npragma solidity ^0.8.20;\n"
+                className="absolute inset-0 z-10 w-full resize-none bg-transparent p-4 font-mono text-sm leading-relaxed text-transparent caret-white outline-none lg:p-5"
+                spellCheck={false}
+              />
+              <div className="pointer-events-none absolute inset-0 overflow-auto p-4 lg:p-5">
+                <SyntaxHighlighter
+                  language="solidity"
+                  style={vscDarkPlus}
+                  customStyle={{
+                    margin: 0,
+                    padding: 0,
+                    fontSize: "0.875rem",
+                    lineHeight: 1.6,
+                    background: "transparent",
+                  }}
+                  PreTag="div"
+                >
+                  {code || " "}
+                </SyntaxHighlighter>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right: burn fee + deploy config */}
+        <div className="flex flex-col gap-4">
+          {/* Burn fee card */}
+          <div className="rounded-xl border border-[#23262A] bg-[#15171A] p-5">
+            <div className="mb-4 flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FF6B6B]/10">
+                <Flame className="h-4 w-4 text-[#FF6B6B]" />
+              </div>
+              <h3 className="font-semibold text-white">销毁部署费</h3>
+            </div>
+
+            <div className="mb-4 rounded-lg border border-[#FF6B6B]/20 bg-[#FF6B6B]/5 p-4 text-center">
+              <p className="text-xs text-[#84888C]">销毁数量</p>
+              <p className="mt-1 text-3xl font-bold text-[#FF6B6B]">{BURN_AMOUNT} KIMI</p>
+            </div>
+
+            <div className="mb-4 space-y-3 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-[#84888C]">智能地址</span>
+                <span className="font-mono text-white">0xD0FF...0001</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[#84888C]">代币合约</span>
+                <span className="font-mono text-white">0xKIMI...TOKEN</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[#84888C]">目标网络</span>
+                <span className="text-white">{networks.find((n) => n.value === network)?.label}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[#84888C]">部署网络</span>
+                <span className="text-[#D0FF00]">BNB Smart Chain</span>
+              </div>
+            </div>
+
+            <div className="mb-4 flex items-start gap-2 rounded-lg border border-[#FF6B6B]/30 bg-[#FF6B6B]/10 p-3 text-xs text-[#FF6B6B]">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>警告：代币销毁是不可撤销的操作，请确认后再继续。</span>
+            </div>
+
+            <button
+              onClick={handleCompile}
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#D0FF00]/30 bg-[#D0FF00]/10 py-2.5 text-sm font-medium text-[#D0FF00] transition-colors hover:bg-[#D0FF00]/20"
+            >
+              <Layers className="h-4 w-4" />
+              编译合约
+            </button>
           </div>
 
-          {/* Deploy Mode */}
-          <div className="rounded-xl border border-[#23262A] bg-[#15171A] p-5">
-            <h3 className="mb-4 flex items-center gap-2 text-sm font-medium text-white">
+          {/* Deploy config */}
+          <div className="flex flex-col gap-4 rounded-xl border border-[#23262A] bg-[#15171A] p-5">
+            <h3 className="flex items-center gap-2 text-sm font-medium text-white">
               <ShieldCheck className="h-4 w-4 text-[#2EDEDB]" />
-              部署方式
+              部署配置
             </h3>
+
+            {/* Mode */}
             <div className="space-y-2">
               {DEPLOY_MODES.map((m) => {
                 const Icon = m.icon;
@@ -264,27 +394,21 @@ export default function Deploy() {
               })}
             </div>
             {mode === "factory" && DEPLOY_FACTORY_ADDRESS === "0x0000000000000000000000000000000000000000" && (
-              <div className="mt-3 rounded-lg border border-[#FF6B6B]/30 bg-[#FF6B6B]/10 p-3 text-xs text-[#FF6B6B]">
+              <div className="rounded-lg border border-[#FF6B6B]/30 bg-[#FF6B6B]/10 p-3 text-xs text-[#FF6B6B]">
                 <AlertCircle className="mb-1 inline-block h-3.5 w-3.5" />
                 工厂合约地址尚未配置，请部署后更新 src/lib/contracts/deployer.ts 中的 DEPLOY_FACTORY_ADDRESS
               </div>
             )}
-          </div>
 
-          {/* Bytecode / ABI / Args */}
-          <div className="rounded-xl border border-[#23262A] bg-[#15171A] p-5">
-            <h3 className="mb-4 flex items-center gap-2 text-sm font-medium text-white">
-              <FileCode className="h-4 w-4 text-[#D0FF00]" />
-              部署参数
-            </h3>
-            <div className="space-y-4">
+            <div className="space-y-3">
               <div>
                 <label className="mb-1.5 block text-xs text-[#84888C]">Bytecode</label>
                 <textarea
                   value={bytecode}
                   onChange={(e) => setBytecode(e.target.value)}
                   placeholder="0x60806040..."
-                  className="h-20 w-full resize-none rounded-lg border border-[#303236] bg-[#0B0D0E] p-3 font-mono text-xs text-[#E8E8E8] outline-none placeholder:text-[#5F656D] focus:border-[#D0FF00]/50"
+                  rows={3}
+                  className="w-full resize-none rounded-lg border border-[#303236] bg-[#0B0D0E] p-2.5 font-mono text-xs text-[#E8E8E8] outline-none placeholder:text-[#5F656D] focus:border-[#D0FF00]/50"
                 />
               </div>
               <div>
@@ -293,7 +417,8 @@ export default function Deploy() {
                   value={abi}
                   onChange={(e) => setAbi(e.target.value)}
                   placeholder='[{"inputs":[],"name":"...","type":"constructor"}]'
-                  className="h-24 w-full resize-none rounded-lg border border-[#303236] bg-[#0B0D0E] p-3 font-mono text-xs text-[#E8E8E8] outline-none placeholder:text-[#5F656D] focus:border-[#D0FF00]/50"
+                  rows={3}
+                  className="w-full resize-none rounded-lg border border-[#303236] bg-[#0B0D0E] p-2.5 font-mono text-xs text-[#E8E8E8] outline-none placeholder:text-[#5F656D] focus:border-[#D0FF00]/50"
                 />
               </div>
               <div>
@@ -302,8 +427,8 @@ export default function Deploy() {
                   type="text"
                   value={constructorArgs}
                   onChange={(e) => setConstructorArgs(e.target.value)}
-                  placeholder='["MyToken", "MTK", 1000000] 或 MyToken, MTK, 1000000'
-                  className="w-full rounded-lg border border-[#303236] bg-[#0B0D0E] p-3 font-mono text-xs text-[#E8E8E8] outline-none placeholder:text-[#5F656D] focus:border-[#D0FF00]/50"
+                  placeholder='["MyToken", "MTK", 1000000]'
+                  className="w-full rounded-lg border border-[#303236] bg-[#0B0D0E] p-2.5 font-mono text-xs text-[#E8E8E8] outline-none placeholder:text-[#5F656D] focus:border-[#D0FF00]/50"
                 />
               </div>
               <div>
@@ -313,84 +438,56 @@ export default function Deploy() {
                   value={deployValue}
                   onChange={(e) => setDeployValue(e.target.value)}
                   placeholder="0"
-                  className="w-full rounded-lg border border-[#303236] bg-[#0B0D0E] p-3 font-mono text-xs text-[#E8E8E8] outline-none placeholder:text-[#5F656D] focus:border-[#D0FF00]/50"
+                  className="w-full rounded-lg border border-[#303236] bg-[#0B0D0E] p-2.5 font-mono text-xs text-[#E8E8E8] outline-none placeholder:text-[#5F656D] focus:border-[#D0FF00]/50"
                 />
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* Right: Code preview & deploy */}
-        <div className="flex flex-1 flex-col rounded-xl border border-[#23262A] bg-[#15171A] lg:min-h-0 lg:overflow-hidden">
-          <div className="flex items-center justify-between border-b border-[#23262A] px-5 py-3">
-            <div className="flex items-center gap-2">
-              <FileCode className="h-4 w-4 text-[#D0FF00]" />
-              <span className="text-sm font-medium text-white">合约源码</span>
-            </div>
-            <button
-              onClick={() => setCode("")}
-              className="text-xs text-[#84888C] transition-colors hover:text-white"
-            >
-              清空
-            </button>
-          </div>
-
-          <textarea
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            placeholder="// 在此粘贴你的 Solidity 合约源码，用于预览与存档...\npragma solidity ^0.8.20;\n"
-            className="flex-1 resize-none bg-[#0B0D0E] p-4 font-mono text-xs leading-relaxed text-[#E8E8E8] outline-none placeholder:text-[#5F656D] lg:p-5 lg:text-sm"
-          />
-
-          {/* Deploy action */}
-          <div className="border-t border-[#23262A] p-5">
             {status === "error" && (
-              <div className="mb-4 flex items-start gap-3 rounded-lg border border-[#FF6B6B]/30 bg-[#FF6B6B]/10 p-3 text-xs text-[#FF6B6B]">
+              <div className="flex items-start gap-2 rounded-lg border border-[#FF6B6B]/30 bg-[#FF6B6B]/10 p-3 text-xs text-[#FF6B6B]">
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                 <span className="break-all">{errorMessage}</span>
               </div>
             )}
 
             {status === "success" && (
-              <div className="mb-4 space-y-3 rounded-lg border border-[#D0FF00]/30 bg-[#D0FF00]/10 p-4">
-                <div className="flex items-center gap-2 text-sm font-medium text-[#D0FF00]">
+              <div className="space-y-2 rounded-lg border border-[#D0FF00]/30 bg-[#D0FF00]/10 p-3 text-xs">
+                <div className="flex items-center gap-2 font-medium text-[#D0FF00]">
                   <CheckCircle className="h-4 w-4" />
                   部署成功
                 </div>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs text-[#84888C]">合约地址</span>
-                    <div className="flex items-center gap-2">
-                      <code className="font-mono text-xs text-white">{contractAddress}</code>
-                      <button onClick={() => copyText(contractAddress, "address")} className="text-[#9CA3AF] hover:text-white">
-                        {copiedField === "address" ? <CheckCircle className="h-3.5 w-3.5 text-[#D0FF00]" /> : <Copy className="h-3.5 w-3.5" />}
-                      </button>
-                      <a
-                        href={getExplorerUrl(network, `/address/${contractAddress}`)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-[#9CA3AF] hover:text-white"
-                      >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </a>
-                    </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[#84888C]">合约地址</span>
+                  <div className="flex items-center gap-2">
+                    <code className="font-mono text-white">{contractAddress}</code>
+                    <button onClick={() => copyText(contractAddress, "address")} className="text-[#9CA3AF] hover:text-white">
+                      {copiedField === "address" ? <CheckCircle className="h-3.5 w-3.5 text-[#D0FF00]" /> : <Copy className="h-3.5 w-3.5" />}
+                    </button>
+                    <a
+                      href={getExplorerUrl(network, `/address/${contractAddress}`)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[#9CA3AF] hover:text-white"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
                   </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs text-[#84888C]">交易哈希</span>
-                    <div className="flex items-center gap-2">
-                      <code className="font-mono text-xs text-white">{txHash}</code>
-                      <button onClick={() => copyText(txHash, "tx")} className="text-[#9CA3AF] hover:text-white">
-                        {copiedField === "tx" ? <CheckCircle className="h-3.5 w-3.5 text-[#D0FF00]" /> : <Copy className="h-3.5 w-3.5" />}
-                      </button>
-                      <a
-                        href={getExplorerUrl(network, `/tx/${txHash}`)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-[#9CA3AF] hover:text-white"
-                      >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </a>
-                    </div>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[#84888C]">交易哈希</span>
+                  <div className="flex items-center gap-2">
+                    <code className="font-mono text-white">{txHash}</code>
+                    <button onClick={() => copyText(txHash, "tx")} className="text-[#9CA3AF] hover:text-white">
+                      {copiedField === "tx" ? <CheckCircle className="h-3.5 w-3.5 text-[#D0FF00]" /> : <Copy className="h-3.5 w-3.5" />}
+                    </button>
+                    <a
+                      href={getExplorerUrl(network, `/tx/${txHash}`)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[#9CA3AF] hover:text-white"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
                   </div>
                 </div>
               </div>
@@ -409,6 +506,25 @@ export default function Deploy() {
               {status === "pending" ? "部署中..." : "一键部署"}
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* Bottom: deploy process */}
+      <div className="rounded-xl border border-[#23262A] bg-[#15171A] p-5">
+        <div className="mb-4 flex items-center gap-2">
+          <Info className="h-4 w-4 text-[#2EDEDB]" />
+          <h3 className="text-sm font-semibold text-white">部署流程说明</h3>
+        </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {deploySteps.map((step, index) => (
+            <div key={index} className="relative rounded-lg border border-[#23262A] bg-[#0B0D0E] p-4">
+              <span className="mb-2 flex h-6 w-6 items-center justify-center rounded-full bg-[#23262A] text-xs font-bold text-[#D0FF00]">
+                {index + 1}
+              </span>
+              <h4 className="mb-1 text-sm font-medium text-white">{step.title}</h4>
+              <p className="text-xs leading-relaxed text-[#84888C]">{step.desc}</p>
+            </div>
+          ))}
         </div>
       </div>
     </div>

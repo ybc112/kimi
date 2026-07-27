@@ -13,6 +13,7 @@ export const EXPLORERS: Record<string, string> = {
   eth: "https://etherscan.io",
   arb: "https://arbiscan.io",
   base: "https://basescan.org",
+  robinhood: "https://explorer.robinhood.chain", // TODO: update when official explorer is available
 };
 
 export const RPCS: Record<string, string> = {
@@ -20,6 +21,7 @@ export const RPCS: Record<string, string> = {
   eth: "https://ethereum-rpc.publicnode.com",
   arb: "https://arbitrum-one.publicnode.com",
   base: "https://base.publicnode.com",
+  robinhood: "https://rpc.robinhood.chain", // TODO: update when official RPC is available
 };
 
 export const CHAIN_IDS: Record<string, number> = {
@@ -27,6 +29,7 @@ export const CHAIN_IDS: Record<string, number> = {
   eth: 1,
   arb: 42161,
   base: 8453,
+  robinhood: 138, // TODO: update when official chain ID is available
 };
 
 // 通用工厂 ABI：部署字节码并返回合约地址
