@@ -6,6 +6,7 @@ import Deploy from "@/pages/Deploy";
 import Docs from "@/pages/Docs";
 import Logs from "@/pages/Logs";
 import Trending from "@/pages/Trending";
+import MemeLaunch from "@/pages/MemeLaunch";
 
 export default function App() {
   return (
@@ -14,6 +15,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/chat" element={<Chat />} />
+          <Route path="/meme-launch" element={<MemeLaunch />} />
           <Route path="/deploy" element={<Deploy />} />
           <Route path="/docs" element={<Docs />} />
           <Route path="/logs" element={<Logs />} />

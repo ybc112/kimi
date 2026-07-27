@@ -1,175 +1,132 @@
-import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Bot, Sparkles } from "lucide-react";
-import { useAppStore } from "@/store";
-import { MessageItem } from "@/components/MessageItem";
-import { DEFAULT_MODEL, sendChatMessage } from "@/lib/kimi";
+import { useNavigate } from "react-router-dom";
+import {
+  MessageSquare,
+  Rocket,
+  FileText,
+  ScrollText,
+  TrendingUp,
+  Zap,
+  Sparkles,
+  ArrowRight,
+} from "lucide-react";
+import { KimiIcon } from "@/components/KimiIcon";
 
-interface Message {
-  role: "user" | "assistant";
-  content: string;
-  timestamp: number;
-}
-
-const WELCOME_MESSAGE = `你好！我是 Kimi。
-
-可以问我任何问题，比如：
-- 帮我解释一段 Solidity 代码
-- 怎么部署 Flap Tax Vault V2？
-- 写一个简单的 ERC20 合约
-- 区块链、Web3、编程相关的问题都可以问`;
+const features = [
+  {
+    title: "Kimi 金库生成",
+    description: "基于 Kimi + Flap Tax Vault V2 规范，一句话生成 Solidity 合约代码。",
+    icon: MessageSquare,
+    to: "/chat",
+    color: "#D0FF00",
+  },
+  {
+    title: "Meme 一键发射",
+    description: "输入 Meme 概念自动生成代币名称与符号，连接钱包在 BSC 上发射。",
+    icon: Zap,
+    to: "/meme-launch",
+    color: "#2EDEDB",
+  },
+  {
+    title: "自定义部署合约",
+    description: "粘贴 Solidity 代码，一键部署到 BNB Smart Chain 等主流网络。",
+    icon: Rocket,
+    to: "/deploy",
+    color: "#D0FF00",
+  },
+  {
+    title: "规范文档",
+    description: "Flap Tax Vault V2 规范、部署指南与最佳实践。",
+    icon: FileText,
+    to: "/docs",
+    color: "#9CA3AF",
+  },
+  {
+    title: "服务日志",
+    description: "查看生成、部署、发射等操作的历史记录与状态。",
+    icon: ScrollText,
+    to: "/logs",
+    color: "#9CA3AF",
+  },
+  {
+    title: "热搜榜",
+    description: "实时追踪链上热门代币与趋势。",
+    icon: TrendingUp,
+    to: "/trending",
+    color: "#FF6B6B",
+  },
+];
 
 export default function Home() {
-  const { addLog } = useAppStore();
-  const [messages, setMessages] = useState<Message[]>([
-    { role: "assistant", content: WELCOME_MESSAGE, timestamp: Date.now() },
-  ]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  const adjustTextareaHeight = useCallback(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
-  }, []);
-
-  useEffect(() => {
-    adjustTextareaHeight();
-  }, [input, adjustTextareaHeight]);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading]);
-
-  const handleSend = async () => {
-    const content = input.trim();
-    if (!content || loading) return;
-
-    const userMessage: Message = { role: "user", content, timestamp: Date.now() };
-    setMessages((prev) => [...prev, userMessage]);
-    setInput("");
-    setLoading(true);
-    addLog({ type: "info", message: "Kimi 对话请求" });
-
-    try {
-      const history = messages.slice(-20).map((m) => ({
-        role: m.role,
-        content: m.content,
-      }));
-
-      const reply = await sendChatMessage({
-        model: DEFAULT_MODEL,
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are Kimi, a helpful AI assistant. Answer user questions concisely and accurately. When discussing code, prefer Solidity and blockchain context when relevant.",
-          },
-          ...history,
-          { role: "user", content },
-        ],
-        stream: false,
-        temperature: 0.7,
-      });
-
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: reply, timestamp: Date.now() },
-      ]);
-      addLog({ type: "success", message: "Kimi 响应成功" });
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: `请求失败：${detail}`, timestamp: Date.now() },
-      ]);
-      addLog({ type: "error", message: "Kimi 请求失败", detail });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
+  const navigate = useNavigate();
 
   return (
-    <div className="flex h-[calc(100vh-7rem)] flex-col gap-4 lg:h-[calc(100vh-3rem)]">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-white">Kimi 对话</h2>
-          <p className="text-xs text-[#84888C]">普通对话，啥都能问</p>
+    <div className="flex min-h-[calc(100vh-7rem)] flex-col gap-6 lg:h-[calc(100vh-3rem)] lg:overflow-auto">
+      {/* Welcome */}
+      <div className="relative overflow-hidden rounded-2xl border border-[#23262A] bg-[#15171A] p-6 lg:p-8">
+        <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-[#D0FF00]/10 blur-3xl" />
+        <div className="absolute bottom-0 left-1/3 h-32 w-32 rounded-full bg-[#2EDEDB]/10 blur-3xl" />
+        <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-4">
+            <div className="relative">
+              <KimiIcon size={64} className="h-16 w-16 rounded-2xl border border-[#23262A] shadow-lg" />
+              <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#D0FF00] text-[10px] text-black">
+                <Sparkles className="h-3 w-3" />
+              </span>
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-white lg:text-3xl">欢迎来到 Kimi 控制台</h1>
+              <p className="mt-1 text-sm text-[#84888C]">
+                AI 驱动的合约生成与 Meme 代币发射平台
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => navigate("/chat")}
+            className="flex items-center justify-center gap-2 self-start rounded-lg bg-[#D0FF00] px-5 py-2.5 text-sm font-semibold text-black transition-opacity hover:opacity-90 sm:self-auto"
+          >
+            开始生成
+            <ArrowRight className="h-4 w-4" />
+          </button>
         </div>
-        <button
-          onClick={() =>
-            setMessages([
-              { role: "assistant", content: WELCOME_MESSAGE, timestamp: Date.now() },
-            ])
-          }
-          className="flex items-center gap-2 rounded-lg border border-[#23262A] bg-[#15171A] px-4 py-2 text-sm text-[#9CA3AF] transition-colors hover:border-[#D0FF00]/30 hover:text-white"
-        >
-          <Sparkles className="h-4 w-4" />
-          新对话
-        </button>
       </div>
 
-      <div className="flex flex-1 flex-col overflow-hidden rounded-xl border border-[#23262A] bg-[#15171A]">
-        <div className="border-b border-[#23262A] px-5 py-3">
-          <div className="flex items-center gap-2">
-            <Bot className="h-4 w-4 text-[#D0FF00]" />
-            <span className="text-sm font-medium text-white">Kimi</span>
-            <span className="rounded-full bg-[#D0FF00]/10 px-2 py-0.5 text-[10px] text-[#D0FF00]">在线</span>
-          </div>
-        </div>
-
-        <div className="flex-1 space-y-5 overflow-auto p-4 lg:p-5">
-          {messages.map((message, index) => (
-            <MessageItem key={index} role={message.role} content={message.content} />
-          ))}
-          {loading && (
-            <div className="flex justify-start">
-              <div className="max-w-[90%] rounded-2xl rounded-tl-sm border border-[#23262A] bg-[#1A1D21] px-5 py-3">
-                <div className="flex items-center gap-2 text-sm text-[#84888C]">
-                  <Bot className="h-4 w-4 text-[#2EDEDB]" />
-                  <span>Kimi 正在思考</span>
-                  <span className="inline-flex gap-1">
-                    <span className="animate-bounce">.</span>
-                    <span className="animate-bounce [animation-delay:0.2s]">.</span>
-                    <span className="animate-bounce [animation-delay:0.4s]">.</span>
-                  </span>
-                </div>
-              </div>
+      {/* Feature grid */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {features.map((feature) => (
+          <button
+            key={feature.to}
+            onClick={() => navigate(feature.to)}
+            className="group relative overflow-hidden rounded-xl border border-[#23262A] bg-[#15171A] p-5 text-left transition-all hover:border-[#D0FF00]/30 hover:bg-[#1A1D21]"
+          >
+            <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-[#0B0D0E]">
+              <feature.icon className="h-5 w-5" style={{ color: feature.color }} />
             </div>
-          )}
-          <div ref={bottomRef} />
-        </div>
+            <h3 className="mb-1.5 text-base font-semibold text-white group-hover:text-[#D0FF00]">
+              {feature.title}
+            </h3>
+            <p className="text-sm leading-relaxed text-[#84888C]">{feature.description}</p>
+            <div className="absolute bottom-5 right-5 opacity-0 transition-opacity group-hover:opacity-100">
+              <ArrowRight className="h-4 w-4 text-[#D0FF00]" />
+            </div>
+          </button>
+        ))}
+      </div>
 
-        <div className="border-t border-[#23262A] p-4">
-          <div className="flex items-end gap-3 rounded-xl border border-[#303236] bg-[#0B0D0E] p-3">
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="问 Kimi 任何问题，按 Enter 发送，Shift+Enter 换行..."
-              rows={1}
-              disabled={loading}
-              className="max-h-40 min-h-[44px] flex-1 resize-none bg-transparent px-2 py-2.5 text-sm text-white outline-none placeholder:text-[#5F656D]"
-              style={{ height: "auto" }}
-            />
-            <button
-              onClick={handleSend}
-              disabled={!input.trim() || loading}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#D0FF00] text-black transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <Send className="h-4 w-4" />
-            </button>
-          </div>
+      {/* Bottom status strip */}
+      <div className="mt-auto grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="rounded-xl border border-[#23262A] bg-[#15171A] p-4">
+          <p className="text-xs text-[#5F656D]">AI 模型</p>
+          <p className="mt-1 text-sm font-medium text-white">Kimi / DeepSeek-v4-flash</p>
+        </div>
+        <div className="rounded-xl border border-[#23262A] bg-[#15171A] p-4">
+          <p className="text-xs text-[#5F656D]">部署网络</p>
+          <p className="mt-1 text-sm font-medium text-white">BNB Smart Chain Mainnet</p>
+        </div>
+        <div className="rounded-xl border border-[#23262A] bg-[#15171A] p-4">
+          <p className="text-xs text-[#5F656D]">发射台合约</p>
+          <p className="mt-1 truncate text-sm font-medium text-[#D0FF00]">
+            0x972D...A97EC
+          </p>
         </div>
       </div>
     </div>
