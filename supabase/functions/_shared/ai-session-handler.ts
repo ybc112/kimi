@@ -25,13 +25,13 @@ type SessionRequest = {
 };
 
 function getMinimumKimi(): { label: string; amount: bigint } {
-  const configured = (Deno.env.get("AI_MIN_KIMI_BALANCE") || "20000").trim();
+  const configured = (Deno.env.get("AI_MIN_KIMI_BALANCE") || "200000").trim();
   try {
     const amount = ethers.parseUnits(configured, 18);
     if (amount < 0n) throw new Error();
     return { label: configured, amount };
   } catch {
-    return { label: "20000", amount: ethers.parseUnits("20000", 18) };
+    return { label: "200000", amount: ethers.parseUnits("200000", 18) };
   }
 }
 
@@ -63,7 +63,8 @@ export async function handleAiSessionRequest(req: Request): Promise<Response> {
   try {
     const origin = assertAllowedOrigin(req);
     const clientIp = assertClientIpAllowed(req);
-    enforceRateLimit(`ai-session:ip:${clientIp}`, 8, 60_000);
+    // 每个 IP / 钱包创建 session 的频率严格控制，防止恶意地址池轮换刷签名
+    enforceRateLimit(`ai-session:ip:${clientIp}`, 5, 60 * 60_000);
 
     const body = await readJsonBody<SessionRequest>(req, 16_384);
     if (typeof body.origin !== "string" || body.origin.trim().toLowerCase() !== origin) {
@@ -86,7 +87,8 @@ export async function handleAiSessionRequest(req: Request): Promise<Response> {
     }
 
     const address = ethers.getAddress(body.address);
-    enforceRateLimit(`ai-session:wallet:${address.toLowerCase()}`, 5, 60_000);
+    enforceRateLimit(`ai-session:wallet:${address.toLowerCase()}`, 3, 60 * 60_000);
+    enforceRateLimit(`ai-session:wallet-day:${address.toLowerCase()}`, 10, 24 * 60 * 60_000);
     const message = buildWalletAccessMessage({
       origin,
       address,

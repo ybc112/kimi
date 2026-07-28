@@ -22,8 +22,9 @@ type ChatRequestBody = {
 };
 
 const ALLOWED_ROLES = new Set(["system", "user", "assistant"]);
-const CHAT_RATE_PER_MINUTE = readPositiveInt("AI_CHAT_RATE_LIMIT_PER_MINUTE", 6, 60);
-const CHAT_IP_RATE_PER_MINUTE = readPositiveInt("AI_CHAT_IP_RATE_LIMIT_PER_MINUTE", 20, 200);
+const CHAT_RATE_PER_MINUTE = readPositiveInt("AI_CHAT_RATE_LIMIT_PER_MINUTE", 3, 60);
+const CHAT_IP_RATE_PER_MINUTE = readPositiveInt("AI_CHAT_IP_RATE_LIMIT_PER_MINUTE", 8, 200);
+const CHAT_RATE_PER_DAY = readPositiveInt("AI_CHAT_RATE_LIMIT_PER_DAY", 30, 500);
 const MAX_TOKENS = readPositiveInt("DEEPSEEK_MAX_TOKENS", 4_096, 8_192);
 
 function normalizeMessages(value: unknown): Array<{ role: string; content: string }> {
@@ -74,6 +75,7 @@ serve(async (req) => {
     const clientIp = assertClientIpAllowed(req);
     const session = await verifyAiSession(req);
     enforceRateLimit(`deepseek:wallet:${session.wallet}`, CHAT_RATE_PER_MINUTE, 60_000);
+    enforceRateLimit(`deepseek:wallet-day:${session.wallet}`, CHAT_RATE_PER_DAY, 24 * 60 * 60_000);
     enforceRateLimit(`deepseek:ip:${clientIp}`, CHAT_IP_RATE_PER_MINUTE, 60_000);
 
     const body = await readJsonBody<ChatRequestBody>(req, 128_000);

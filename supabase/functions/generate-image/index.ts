@@ -20,8 +20,9 @@ type ImageRequestBody = {
 };
 
 const ALLOWED_SIZES = new Set(["1024x1024", "1792x1024", "1024x1792"]);
-const IMAGE_RATE_PER_TEN_MINUTES = readPositiveInt("AI_IMAGE_RATE_LIMIT_PER_10_MINUTES", 2, 20);
-const IMAGE_IP_RATE_PER_TEN_MINUTES = readPositiveInt("AI_IMAGE_IP_RATE_LIMIT_PER_10_MINUTES", 6, 60);
+const IMAGE_RATE_PER_TEN_MINUTES = readPositiveInt("AI_IMAGE_RATE_LIMIT_PER_10_MINUTES", 1, 20);
+const IMAGE_IP_RATE_PER_TEN_MINUTES = readPositiveInt("AI_IMAGE_IP_RATE_LIMIT_PER_10_MINUTES", 2, 60);
+const IMAGE_RATE_PER_DAY = readPositiveInt("AI_IMAGE_RATE_LIMIT_PER_DAY", 5, 100);
 const IMAGE_UPSTREAM_TIMEOUT_MS = readPositiveInt("OPENAI_IMAGE_TIMEOUT_MS", 300_000, 360_000);
 
 function readUpstreamMessage(data: unknown, status: number): string {
@@ -42,6 +43,7 @@ serve(async (req) => {
     const clientIp = assertClientIpAllowed(req);
     const session = await verifyAiSession(req);
     enforceRateLimit(`image:wallet:${session.wallet}`, IMAGE_RATE_PER_TEN_MINUTES, 10 * 60_000);
+    enforceRateLimit(`image:wallet-day:${session.wallet}`, IMAGE_RATE_PER_DAY, 24 * 60 * 60_000);
     enforceRateLimit(`image:ip:${clientIp}`, IMAGE_IP_RATE_PER_TEN_MINUTES, 10 * 60_000);
 
     const body = await readJsonBody<ImageRequestBody>(req, 16_384);
