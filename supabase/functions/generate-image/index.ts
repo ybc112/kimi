@@ -22,6 +22,7 @@ type ImageRequestBody = {
 const ALLOWED_SIZES = new Set(["1024x1024", "1792x1024", "1024x1792"]);
 const IMAGE_RATE_PER_TEN_MINUTES = readPositiveInt("AI_IMAGE_RATE_LIMIT_PER_10_MINUTES", 2, 20);
 const IMAGE_IP_RATE_PER_TEN_MINUTES = readPositiveInt("AI_IMAGE_IP_RATE_LIMIT_PER_10_MINUTES", 6, 60);
+const IMAGE_UPSTREAM_TIMEOUT_MS = readPositiveInt("OPENAI_IMAGE_TIMEOUT_MS", 300_000, 360_000);
 
 function readUpstreamMessage(data: unknown, status: number): string {
   if (data && typeof data === "object") {
@@ -66,21 +67,38 @@ serve(async (req) => {
       promptCharacters: prompt.length,
     });
 
-    const response = await fetch(`${baseUrl}/v1/images/generations`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        prompt,
-        n: 1,
-        size,
-        response_format: "b64_json",
-      }),
-      signal: AbortSignal.timeout(120_000),
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${baseUrl}/v1/images/generations`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          prompt,
+          n: 1,
+          size,
+          response_format: "b64_json",
+        }),
+        signal: AbortSignal.timeout(IMAGE_UPSTREAM_TIMEOUT_MS),
+      });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      const isTimeout =
+        error instanceof DOMException &&
+        (error.name === "TimeoutError" || error.name === "AbortError");
+      console.error("[generate-image] upstream fetch failed", {
+        wallet: session.wallet,
+        isTimeout,
+        reason: reason.slice(0, 300),
+      });
+      if (isTimeout) {
+        throw new SecurityError(504, "IMAGE_UPSTREAM_TIMEOUT", "生图时间超过 5 分钟，请稍后重试");
+      }
+      throw new SecurityError(502, "IMAGE_UPSTREAM_UNAVAILABLE", "暂时无法连接生图服务，请稍后重试");
+    }
 
     const contentLength = Number(response.headers.get("content-length") || "0");
     if (contentLength > 20_000_000) {
