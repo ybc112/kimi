@@ -353,13 +353,13 @@ export function formatCreateFee(feeValue: bigint | string): CreateFeeDisplay {
 async function verifySnowballLaunchpad(provider: ethers.Provider): Promise<string> {
   const network = await provider.getNetwork();
   if (Number(network.chainId) !== BSC_CHAIN_ID) {
-    throw new Error("Snowball 发币工厂仅部署在 BNB Smart Chain（Chain ID 56）");
+    throw new Error("KIMI 发币工厂仅部署在 BNB Smart Chain（Chain ID 56）");
   }
   const code = await provider.getCode(SNOWBALL_LAUNCHPAD_ADDRESS);
-  if (code === "0x") throw new Error("当前网络没有部署 Snowball 发币工厂");
+  if (code === "0x") throw new Error("当前网络没有部署 KIMI 发币工厂");
   const runtimeHash = ethers.keccak256(code);
   if (runtimeHash.toLowerCase() !== SNOWBALL_LAUNCHPAD_RUNTIME_HASH.toLowerCase()) {
-    throw new Error("Factory 运行时代码与 SnowballLaunchpad.sol 不一致，已阻止交易");
+    throw new Error("KIMI 发币工厂运行时代码与已核验源码不一致，已阻止交易");
   }
   return runtimeHash;
 }

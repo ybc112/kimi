@@ -23,7 +23,7 @@ const statusConfig: Record<
 };
 
 const typeConfig: Record<TokenType, { label: string; icon: React.ElementType; color: string }> = {
-  snowball: { label: "Snowball", icon: Flame, color: "text-[#FF6B6B]" },
+  snowball: { label: "KIMI 发币", icon: Flame, color: "text-[#FF6B6B]" },
   flap: { label: "Flap", icon: Box, color: "text-[#2EDEDB]" },
   meme: { label: "Meme", icon: Zap, color: "text-[#A78BFA]" },
   custom: { label: "Custom", icon: Rocket, color: "text-[#9CA3AF]" },
@@ -31,7 +31,7 @@ const typeConfig: Record<TokenType, { label: string; icon: React.ElementType; co
 
 const typeFilters: { value: TokenType | "all"; label: string; icon: React.ElementType }[] = [
   { value: "all", label: "全部类型", icon: Filter },
-  { value: "snowball", label: "Snowball", icon: Flame },
+  { value: "snowball", label: "KIMI 发币", icon: Flame },
   { value: "flap", label: "Flap", icon: Box },
   { value: "meme", label: "Meme", icon: Zap },
   { value: "custom", label: "Custom", icon: Rocket },

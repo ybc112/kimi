@@ -3,9 +3,9 @@ import react from '@vitejs/plugin-react'
 import tsconfigPaths from "vite-tsconfig-paths";
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   build: {
-    sourcemap: 'hidden',
+    sourcemap: false,
     rollupOptions: {
       output: {
         manualChunks: {
@@ -16,13 +16,13 @@ export default defineConfig({
     },
   },
   plugins: [
-    react({
-      babel: {
-        plugins: [
-          'react-dev-locator',
-        ],
-      },
-    }),
+    react(mode === "development"
+      ? {
+          babel: {
+            plugins: ["react-dev-locator"],
+          },
+        }
+      : undefined),
     tsconfigPaths()
   ],
-})
+}))

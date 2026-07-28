@@ -1,122 +1,70 @@
-// Supabase Edge Function: proxy image generation requests to OpenAI-compatible API
-// Deploy: supabase functions deploy generate-image
-// Env: OPENAI_IMAGE_API_KEY, OPENAI_IMAGE_BASE_URL (default https://api.iotwq.top)
-// Optional: ALLOWED_ORIGINS=comma-separated list (e.g. https://kimi.example.com,http://localhost:5173)
-// Optional: RATE_LIMIT_PER_MINUTE=10
-// Optional: BLOCKED_IPS=comma-separated list (e.g. 1.2.3.4,5.6.7.8)
+// Supabase Edge Function: authenticated image generation proxy.
+// Requests require a short-lived wallet/KIMI session issued by ai-session.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import {
+  SecurityError,
+  assertClientIpAllowed,
+  corsHeaders,
+  enforceRateLimit,
+  jsonResponse,
+  readJsonBody,
+  readPositiveInt,
+  securityErrorResponse,
+  verifyAiSession,
+} from "../_shared/ai-security.ts";
 
-const allowedOrigins = Deno.env.get("ALLOWED_ORIGINS")
-  ? Deno.env.get("ALLOWED_ORIGINS")!.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)
-  : [];
+type ImageRequestBody = {
+  prompt?: unknown;
+  size?: unknown;
+};
 
-const rateLimitPerMinute = Number(Deno.env.get("RATE_LIMIT_PER_MINUTE") || "10");
+const ALLOWED_SIZES = new Set(["1024x1024", "1792x1024", "1024x1792"]);
+const IMAGE_RATE_PER_TEN_MINUTES = readPositiveInt("AI_IMAGE_RATE_LIMIT_PER_10_MINUTES", 2, 20);
+const IMAGE_IP_RATE_PER_TEN_MINUTES = readPositiveInt("AI_IMAGE_IP_RATE_LIMIT_PER_10_MINUTES", 6, 60);
 
-const blockedIps = Deno.env.get("BLOCKED_IPS")
-  ? Deno.env.get("BLOCKED_IPS")!.split(",").map((s) => s.trim()).filter(Boolean)
-  : [];
-
-const ipBuckets = new Map<string, { count: number; resetAt: number }>();
-
-function getClientIp(req: Request): string {
-  const cf = req.headers.get("cf-connecting-ip");
-  if (cf) return cf;
-  const xForwarded = req.headers.get("x-forwarded-for");
-  if (xForwarded) return xForwarded.split(",")[0].trim();
-  return "unknown";
-}
-
-function isBlocked(ip: string): boolean {
-  return blockedIps.includes(ip);
-}
-
-function isRateLimited(ip: string): boolean {
-  const now = Date.now();
-  const bucket = ipBuckets.get(ip);
-  if (!bucket || now > bucket.resetAt) {
-    ipBuckets.set(ip, { count: 1, resetAt: now + 60_000 });
-    return false;
+function readUpstreamMessage(data: unknown, status: number): string {
+  if (data && typeof data === "object") {
+    const error = (data as { error?: unknown }).error;
+    if (error && typeof error === "object" && typeof (error as { message?: unknown }).message === "string") {
+      return (error as { message: string }).message.slice(0, 500);
+    }
   }
-  bucket.count++;
-  return bucket.count > rateLimitPerMinute;
-}
-
-function isAllowedOrigin(req: Request): boolean {
-  if (allowedOrigins.length === 0) return true;
-  const origin = req.headers.get("origin")?.toLowerCase() || "";
-  const referer = req.headers.get("referer")?.toLowerCase() || "";
-  return allowedOrigins.some((allowed) => origin === allowed || referer.startsWith(allowed + "/"));
-}
-
-function corsHeaders(req: Request) {
-  const origin = req.headers.get("origin") || "";
-  const allowOrigin = origin || allowedOrigins[0] || "*";
-  return {
-    "Access-Control-Allow-Origin": allowOrigin,
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "apikey, x-client-info, authorization, content-type",
-  };
+  return `生图服务返回状态 ${status}`;
 }
 
 serve(async (req) => {
-  const headers = corsHeaders(req);
-
-  if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers });
-  }
-
-  if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), {
-      status: 405,
-      headers: { ...headers, "Content-Type": "application/json" },
-    });
-  }
-
-  if (!isAllowedOrigin(req)) {
-    return new Response(JSON.stringify({ error: "Forbidden" }), {
-      status: 403,
-      headers: { ...headers, "Content-Type": "application/json" },
-    });
-  }
-
-  const clientIp = getClientIp(req);
-  if (isBlocked(clientIp)) {
-    return new Response(JSON.stringify({ error: "Blocked" }), {
-      status: 403,
-      headers: { ...headers, "Content-Type": "application/json" },
-    });
-  }
-
-  if (isRateLimited(clientIp)) {
-    return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
-      status: 429,
-      headers: { ...headers, "Content-Type": "application/json" },
-    });
-  }
-
-  const apiKey = Deno.env.get("OPENAI_IMAGE_API_KEY");
-  const baseUrl = Deno.env.get("OPENAI_IMAGE_BASE_URL") || "https://api.iotwq.top";
-
-  if (!apiKey) {
-    return new Response(JSON.stringify({ error: "OPENAI_IMAGE_API_KEY not configured" }), {
-      status: 500,
-      headers: { ...headers, "Content-Type": "application/json" },
-    });
-  }
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(req) });
+  if (req.method !== "POST") return jsonResponse(req, { error: "Method not allowed" }, 405);
 
   try {
-    const body = await req.json();
-    const { prompt, size = "1024x1024", model = "gpt-image-2", n = 1, response_format = "b64_json" } = body;
+    const clientIp = assertClientIpAllowed(req);
+    const session = await verifyAiSession(req);
+    enforceRateLimit(`image:wallet:${session.wallet}`, IMAGE_RATE_PER_TEN_MINUTES, 10 * 60_000);
+    enforceRateLimit(`image:ip:${clientIp}`, IMAGE_IP_RATE_PER_TEN_MINUTES, 10 * 60_000);
 
-    if (!prompt || typeof prompt !== "string") {
-      return new Response(JSON.stringify({ error: "prompt is required" }), {
-        status: 400,
-        headers: { ...headers, "Content-Type": "application/json" },
-      });
+    const body = await readJsonBody<ImageRequestBody>(req, 16_384);
+    if (typeof body.prompt !== "string" || !body.prompt.trim()) {
+      throw new SecurityError(400, "PROMPT_REQUIRED", "生图提示词不能为空");
     }
+    const prompt = body.prompt.trim();
+    if (prompt.length > 1_200) {
+      throw new SecurityError(413, "PROMPT_TOO_LARGE", "生图提示词不能超过 1200 个字符");
+    }
+    const size = typeof body.size === "string" && ALLOWED_SIZES.has(body.size) ? body.size : "1024x1024";
 
-    console.log("[generate-image] upstream request:", { model, prompt, size, n, clientIp });
+    const apiKey = Deno.env.get("OPENAI_IMAGE_API_KEY");
+    const baseUrl = Deno.env.get("OPENAI_IMAGE_BASE_URL") || "https://api.iotwq.top";
+    const model = Deno.env.get("OPENAI_IMAGE_MODEL") || "gpt-image-2";
+    if (!apiKey) throw new SecurityError(503, "IMAGE_KEY_MISSING", "生图服务密钥未配置");
+
+    console.log("[generate-image] request", {
+      wallet: session.wallet,
+      clientIp,
+      model,
+      size,
+      promptCharacters: prompt.length,
+    });
 
     const response = await fetch(`${baseUrl}/v1/images/generations`, {
       method: "POST",
@@ -124,36 +72,37 @@ serve(async (req) => {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({ model, prompt, n, size, response_format }),
+      body: JSON.stringify({
+        model,
+        prompt,
+        n: 1,
+        size,
+        response_format: "b64_json",
+      }),
+      signal: AbortSignal.timeout(120_000),
     });
 
+    const contentLength = Number(response.headers.get("content-length") || "0");
+    if (contentLength > 20_000_000) {
+      return jsonResponse(req, { error: "生图服务返回内容过大", code: "UPSTREAM_TOO_LARGE" }, 502);
+    }
     const rawText = await response.text();
-    let data: Record<string, unknown> = {};
+    let data: unknown;
     try {
       data = JSON.parse(rawText);
     } catch {
-      data = { raw: rawText };
+      data = null;
     }
-
-    console.log("[generate-image] upstream response:", { status: response.status, data });
+    console.log("[generate-image] response", { wallet: session.wallet, status: response.status });
 
     if (!response.ok) {
-      const message = data?.error?.message || data?.raw || `Upstream returned ${response.status}`;
-      return new Response(JSON.stringify({ error: message, upstreamStatus: response.status, upstreamData: data }), {
-        status: 502,
-        headers: { ...headers, "Content-Type": "application/json" },
-      });
+      return jsonResponse(req, { error: readUpstreamMessage(data, response.status), code: "UPSTREAM_ERROR" }, 502);
     }
-
-    return new Response(JSON.stringify(data), {
-      status: 200,
-      headers: { ...headers, "Content-Type": "application/json" },
-    });
+    if (!data || typeof data !== "object") {
+      return jsonResponse(req, { error: "生图服务返回格式无效", code: "UPSTREAM_INVALID" }, 502);
+    }
+    return jsonResponse(req, data as Record<string, unknown>);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return new Response(JSON.stringify({ error: message }), {
-      status: 500,
-      headers: { ...headers, "Content-Type": "application/json" },
-    });
+    return securityErrorResponse(req, error);
   }
 });

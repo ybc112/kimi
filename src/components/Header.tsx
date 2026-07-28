@@ -36,7 +36,7 @@ const mainNavItems = [
 const moreNavItems = [
   { to: "/docs", icon: FileText, label: "规范文档" },
   { to: "/logs", icon: ScrollText, label: "服务日志" },
-  { to: "/meme-launch", icon: Zap, label: "Snowball 发币" },
+  { to: "/meme-launch", icon: Zap, label: "KIMI 发币" },
 ];
 
 export function Header() {

@@ -18,6 +18,7 @@ import { useAppStore } from "@/store";
 import { useContractData } from "@/hooks/useContractData";
 import { cn } from "@/lib/utils";
 import { safeGetItem, safeSetItem } from "@/lib/storage";
+import { AiSecurityNotice } from "@/components/AiSecurityNotice";
 
 type Device = "desktop" | "tablet" | "mobile";
 
@@ -185,6 +186,8 @@ export default function PageBuilder() {
           )}
         </div>
       </div>
+
+      <AiSecurityNotice />
 
       {/* 3-column layout: 25% / 37.5% / 37.5% -> 2/8, 3/8, 3/8 */}
       <div className="grid flex-1 grid-cols-1 gap-4 lg:grid-cols-8 lg:overflow-hidden">

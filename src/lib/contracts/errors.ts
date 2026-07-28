@@ -35,13 +35,13 @@ export function formatContractError(error: unknown, fallback = "交易执行失�
     return { summary: "链上创建费已经变化，请刷新费用后重试", details };
   }
   if (/InvalidInput/i.test(raw)) {
-    return { summary: "Snowball 发币参数不符合合约限制，请检查总量、税率和名单", details };
+    return { summary: "KIMI 发币参数不符合合约限制，请检查总量、税率和名单", details };
   }
   if (/FeeTransferFailed/i.test(raw)) {
-    return { summary: "Snowball Factory 无法转出创建费，请联系 Factory 管理员", details };
+    return { summary: "KIMI 发币工厂无法转出创建费，请联系工厂管理员", details };
   }
-  if (/Factory 运行时代码|SnowballLaunchpad\.sol/i.test(raw)) {
-    return { summary: "Factory 合约校验未通过，已阻止交易", details };
+  if (/Factory 运行时代码|发币工厂运行时代码|已核验源码|SnowballLaunchpad\.sol/i.test(raw)) {
+    return { summary: "KIMI 发币工厂合约校验未通过，已阻止交易", details };
   }
   if (/missing revert data/i.test(raw) && /estimateGas/i.test(raw)) {
     return {

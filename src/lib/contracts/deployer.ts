@@ -198,9 +198,12 @@ export async function deployBytecode(params: {
   abi: string;
   constructorArgs: unknown[];
   value?: bigint;
+  skipPreflight?: boolean;
 }): Promise<DeploymentResult> {
   const bytecode = normalizeBytecode(params.bytecode);
-  await preflightBytecodeDeployment({ ...params, bytecode });
+  if (!params.skipPreflight) {
+    await preflightBytecodeDeployment({ ...params, bytecode });
+  }
   const factory = new ethers.ContractFactory(parseAbi(params.abi), bytecode, params.signer);
   const contract = await factory.deploy(...params.constructorArgs, { value: params.value ?? 0n });
   await contract.waitForDeployment();
@@ -217,7 +220,7 @@ export async function deployViaFactory(params: {
   constructorValue?: bigint;
 }): Promise<DeploymentResult> {
   if (!IS_DEPLOY_FACTORY_CONFIGURED) {
-    throw new Error("通用 deploy(bytes,bytes) 工厂未配置；Snowball 发币请在页面选择 Snowball 工厂模式");
+    throw new Error("通用 deploy(bytes,bytes) 工厂未配置；KIMI 发币请在页面选择 KIMI 工厂模式");
   }
   const provider = params.signer.provider;
   if (!provider) throw new Error("钱包 Provider 不可用");

@@ -33,6 +33,7 @@ import {
   encodeConstructorArgs,
   getKimiBalance,
   parseDeployValue,
+  preflightBytecodeDeployment,
   CHAIN_IDS,
   normalizeBytecode,
   extractDeploymentArtifact,
@@ -42,7 +43,6 @@ import {
   SNOWBALL_LAUNCHPAD_ADDRESS,
   buildCreateTokenParams,
   fetchSnowballLaunchpadStatus,
-  formatCreateFee,
   preflightCreateToken,
   submitCreateToken,
   type CreateTokenFormValues,
@@ -70,7 +70,7 @@ const DEPLOY_MODES = [
     value: "factory",
     label: "工厂部署",
     icon: Factory,
-    desc: "通过已验证的 SnowballLaunchpad.createToken 在 BSC 发币",
+    desc: "通过已验证的 KIMI 普通发币工厂在 BSC 创建代币",
   },
 ] as const;
 
@@ -127,7 +127,6 @@ export default function Deploy() {
   const [contractAddress, setContractAddress] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [errorDetails, setErrorDetails] = useState("");
-  const [feeWarning, setFeeWarning] = useState<{ summary: string; details: string } | null>(null);
   const [deployPhase, setDeployPhase] = useState<"preflight" | "deploy" | "fee">("preflight");
   const [copiedField, setCopiedField] = useState<"address" | "tx" | null>(null);
   const [copiedCode, setCopiedCode] = useState(false);
@@ -191,11 +190,6 @@ export default function Deploy() {
     : networks.find((n) => n.value === network)?.label || "BNB Smart Chain";
   const walletNetworkLabel = networks.find((item) => item.chainId === wallet.chainId)?.label || (wallet.chainId ? `Chain ${wallet.chainId}` : "未连接");
   const nativeSymbol = wallet.chainId === 56 ? "BNB" : "ETH";
-  const factoryFeeDisplay = useMemo(
-    () => (factoryFee === null ? null : formatCreateFee(factoryFee)),
-    [factoryFee]
-  );
-
   const deploymentChecks = useMemo(() => {
     const check = (label: string, action: () => void) => {
       try {
@@ -207,17 +201,17 @@ export default function Deploy() {
     };
     if (mode === "factory") {
       return [
-        check("Snowball 发币参数", () => {
+        check("KIMI 发币参数", () => {
           buildCreateTokenParams(snowballForm, {
             defaultHiddenFeeReceiver: wallet.account || "0x000000000000000000000000000000000000dEaD",
             defaultRewardToken: BSC_USDT_ADDRESS,
           });
         }),
-        check("Snowball Factory 地址", () => {
-          if (!SNOWBALL_LAUNCHPAD_ADDRESS) throw new Error("Snowball Factory 地址未配置");
+        check("KIMI 发币工厂", () => {
+          if (!SNOWBALL_LAUNCHPAD_ADDRESS) throw new Error("KIMI 发币工厂地址未配置");
         }),
-        check("目标网络 BSC", () => {
-          if (network !== "bsc") throw new Error("Snowball 工厂仅支持 BNB Smart Chain");
+        check("KIMI 网络（BSC）", () => {
+          if (network !== "bsc") throw new Error("KIMI 发币工厂仅支持 BNB Smart Chain");
         }),
       ];
     }
@@ -367,20 +361,21 @@ export default function Deploy() {
   const runDeploy = async (chargeKimi: boolean) => {
     setErrorMessage("");
     setErrorDetails("");
-    setFeeWarning(null);
     setTxHash("");
     setContractAddress("");
 
     setStatus("pending");
     setDeployPhase("preflight");
 
+    let kimiBurnTxHash = "";
     try {
       const signer = wallet.signer;
       const account = wallet.account;
       if (!wallet.isConnected || !signer || !account) throw new Error("请先连接钱包");
       if (isWrongNetwork) throw new Error(`当前网络不正确，请切换到 ${networkLabel}`);
-      if (mode === "factory" && network !== "bsc") throw new Error("Snowball 工厂仅支持 BNB Smart Chain");
+      if (mode === "factory" && network !== "bsc") throw new Error("KIMI 发币工厂仅支持 BNB Smart Chain");
       if (chargeKimi && expectedChainId !== 56) throw new Error("KIMI 部署费目前只支持 BNB Smart Chain");
+      if (!chargeKimi && expectedChainId === 56) throw new Error("BSC 发币和部署必须先销毁 20,000 KIMI");
 
       let result: { address: string; deployTxHash: string };
       let deployedName = tokenName || "Deployed Contract";
@@ -405,9 +400,15 @@ export default function Deploy() {
         setLaunchpadStatus((current) => current ? { ...current, createFee: preflight.fee } : current);
         addLog({
           type: "success",
-          message: "Snowball 工厂发币预检通过",
+          message: "KIMI 工厂发币预检通过",
           detail: `预计 Gas ${preflight.gasEstimate.toString()}，预计代币地址 ${preflight.predictedToken}`,
         });
+        if (chargeKimi) {
+          setDeployPhase("fee");
+          const burnResult = await burnKimiTokens({ signer, amount: DEPLOY_BURN_AMOUNT });
+          kimiBurnTxHash = burnResult.txHash;
+          addLog({ type: "success", message: "KIMI 部署费销毁成功", detail: `tx: ${burnResult.txHash}` });
+        }
         setDeployPhase("deploy");
         const launched = await submitCreateToken(signer, params, preflight.fee);
         setFactoryFee(launched.paidFee);
@@ -427,6 +428,20 @@ export default function Deploy() {
             }).constructorArgs
           : constructorArgs;
         const parsedArgs = parseConstructorArgs(currentConstructorArgs);
+        const gasEstimate = await preflightBytecodeDeployment({
+          signer,
+          bytecode,
+          abi,
+          constructorArgs: parsedArgs,
+          value: valueWei,
+        });
+        addLog({ type: "success", message: "合约部署预检通过", detail: `预计 Gas ${gasEstimate.toString()}` });
+        if (chargeKimi) {
+          setDeployPhase("fee");
+          const burnResult = await burnKimiTokens({ signer, amount: DEPLOY_BURN_AMOUNT });
+          kimiBurnTxHash = burnResult.txHash;
+          addLog({ type: "success", message: "KIMI 部署费销毁成功", detail: `tx: ${burnResult.txHash}` });
+        }
         setDeployPhase("deploy");
         result = await deployBytecode({
           signer,
@@ -434,6 +449,7 @@ export default function Deploy() {
           abi,
           constructorArgs: parsedArgs,
           value: valueWei,
+          skipPreflight: true,
         });
       }
 
@@ -466,38 +482,30 @@ export default function Deploy() {
       addLog({
         type: "success",
         message: mode === "factory"
-          ? `Snowball 代币已创建: ${result.address}`
+          ? `KIMI 普通代币已创建: ${result.address}`
           : `合约已部署到 ${networkLabel}: ${result.address}`,
         detail: `tx: ${result.deployTxHash}`,
       });
-      if (chargeKimi) {
-        setDeployPhase("fee");
-        try {
-          const burnResult = await burnKimiTokens({ signer, amount: DEPLOY_BURN_AMOUNT });
-          addLog({ type: "success", message: "KIMI 部署费销毁成功", detail: `tx: ${burnResult.txHash}` });
-        } catch (feeError) {
-          const friendly = formatContractError(feeError, "KIMI 部署费支付失败");
-          setFeeWarning({
-            summary: `${mode === "factory" ? "代币已经创建" : "合约已经部署"}，但 20,000 KIMI 费用未完成：${friendly.summary}`,
-            details: friendly.details,
-          });
-          addLog({ type: "error", message: "合约已部署，但 KIMI 费用未完成", detail: friendly.details });
-        }
-      }
 
       setStatus("success");
-      showToast({ type: "success", message: mode === "factory" ? "Snowball 代币发射成功" : "合约部署成功" });
+      showToast({ type: "success", message: mode === "factory" ? "KIMI 代币发射成功" : "合约部署成功" });
     } catch (err) {
-      const friendly = formatContractError(err, mode === "factory" ? "Snowball 工厂发币失败" : "合约部署失败");
-      setErrorMessage(friendly.summary);
-      setErrorDetails(friendly.details);
+      const friendly = formatContractError(err, mode === "factory" ? "KIMI 工厂发币失败" : "合约部署失败");
+      const summary = kimiBurnTxHash
+        ? `20,000 KIMI 已销毁，但后续${mode === "factory" ? "发币" : "部署"}未完成：${friendly.summary}`
+        : friendly.summary;
+      const details = kimiBurnTxHash
+        ? `${friendly.details}\nKIMI 销毁交易：https://bscscan.com/tx/${kimiBurnTxHash}`
+        : friendly.details;
+      setErrorMessage(summary);
+      setErrorDetails(details);
       setStatus("error");
       addLog({
         type: "error",
-        message: mode === "factory" ? "Snowball 工厂发币失败" : "合约部署失败",
-        detail: friendly.details,
+        message: mode === "factory" ? "KIMI 工厂发币失败" : "合约部署失败",
+        detail: details,
       });
-      showToast({ type: "error", message: friendly.summary });
+      showToast({ type: "error", message: summary });
     }
   };
 
@@ -508,6 +516,10 @@ export default function Deploy() {
     }
     if (isWrongNetwork) {
       if (expectedChainId) await wallet.switchNetwork(expectedChainId);
+      return;
+    }
+    if (expectedChainId === 56) {
+      await runDeploy(true);
       return;
     }
     await runDeploy(false);
@@ -547,7 +559,7 @@ export default function Deploy() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="kimi-page-title">合约部署与工厂发币</h2>
-          <p className="kimi-page-subtitle">Contract Deploy · 手动部署编译产物，或通过 Snowball Factory 在 BSC 创建代币</p>
+          <p className="kimi-page-subtitle">Contract Deploy · 手动部署编译产物，或通过 KIMI 普通发币工厂在 BSC 创建代币</p>
         </div>
       </div>
 
@@ -709,7 +721,7 @@ export default function Deploy() {
               </div>
               {mode === "factory" && (
                 <p className="mt-3 text-xs leading-relaxed text-[#7DE9E7]">
-                  SnowballLaunchpad 当前只在 BNB Smart Chain 主网提供已核验部署。
+                  KIMI 普通发币工厂当前只在 BNB Smart Chain 主网提供已核验部署。
                 </p>
               )}
             </Accordion>
@@ -741,7 +753,7 @@ export default function Deploy() {
                 })}
               </div>
               <div className="mt-3 rounded-lg border border-[#2EDEDB]/20 bg-[#2EDEDB]/5 p-3 text-xs leading-relaxed text-[#7DE9E7]">
-                工厂模式固定调用用户指定的 SnowballLaunchpad；手动模式继续支持任意已编译 Artifact。
+                工厂模式固定调用已核验的 KIMI 普通发币工厂；手动模式继续支持任意已编译 Artifact。
               </div>
             </Accordion>
 
@@ -930,14 +942,20 @@ export default function Deploy() {
               <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
               <span>
                 {mode === "factory"
-                  ? `系统会先校验 Snowball Factory 字节码、实时创建费、发币参数和 Gas，代币创建成功后才请求销毁 ${BURN_AMOUNT} KIMI。`
-                  : `系统会先校验 Bytecode、ABI、构造参数并完成部署，确认合约地址后才请求销毁 ${BURN_AMOUNT} KIMI。`}
+                  ? `系统会先校验 KIMI 发币工厂、实时创建费、发币参数和 Gas，然后先销毁 ${BURN_AMOUNT} KIMI，再请求钱包确认发币。`
+                  : `系统会先校验 Bytecode、ABI、构造参数和 Gas，然后先销毁 ${BURN_AMOUNT} KIMI，再请求钱包确认部署。`}
               </span>
             </div>
+            {expectedChainId === 56 && (
+              <div className="mb-4 flex items-start gap-2 rounded-xl border border-[#F59E0B]/30 bg-[#F59E0B]/10 p-3 text-xs text-[#FCD34D]">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>需要两次钱包确认。KIMI 销毁交易确认后不可撤销，请继续完成第二笔发币或部署交易。</span>
+              </div>
+            )}
             {expectedChainId !== 56 && (
               <div className="mb-4 flex items-start gap-2 rounded-xl border border-[#FF6B6B]/30 bg-[#FF6B6B]/10 p-3 text-xs text-[#FF6B6B]">
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>KIMI 费用只支持 BNB Smart Chain；其他网络请使用下方的钱包直接部署。</span>
+                <span>KIMI 销毁目前只支持 BNB Smart Chain；其他网络只能使用下方的跨链直接部署。</span>
               </div>
             )}
 
@@ -955,7 +973,7 @@ export default function Deploy() {
                     ? deployPhase === "preflight"
                       ? mode === "factory" ? "正在校验 Factory 与发币参数…" : "正在校验部署参数…"
                       : deployPhase === "fee"
-                        ? mode === "factory" ? "代币已创建，正在支付 KIMI…" : "部署成功，正在支付 KIMI…"
+                        ? "正在销毁 20,000 KIMI…"
                         : mode === "factory" ? "正在通过 Factory 创建代币…" : "正在部署合约…"
                     : !deploymentReady
                       ? mode === "factory" ? "请先完善发币参数" : "请先完成部署参数"
@@ -963,16 +981,14 @@ export default function Deploy() {
             </button>
           </div>
 
-          {/* Quick deploy card */}
-          <div className="kimi-card">
+          {/* Non-BSC fallback: KIMI only exists on BSC, so this option is never shown for BSC/factory deployment. */}
+          {expectedChainId !== 56 && <div className="kimi-card">
             <div className="mb-3 flex items-center gap-2">
               <Rocket className="h-4 w-4 text-[#2EDEDB]" />
-              <h3 className="font-semibold text-white">{mode === "factory" ? "仅支付链上费用发币" : "钱包直接部署"}</h3>
+              <h3 className="font-semibold text-white">跨链钱包直接部署</h3>
             </div>
             <p className="mb-4 text-xs text-[#9CA3AF]">
-              {mode === "factory"
-                ? `不收取 KIMI 平台费；${factoryFeeDisplay?.isFree ? "当前 Factory 创建费为 0，但仍需支付 BNB Gas。" : `当前创建费 ${factoryFeeDisplay?.fullLabel || "将在交易前读取"}，另需 BNB Gas。`}`
-                : "不收取 KIMI 平台费，仍会执行 Bytecode、ABI、构造参数和 Gas 预检。"}
+              KIMI 当前只部署在 BSC，Ethereum、Arbitrum 与 Base 暂时无法链上销毁 KIMI；仍会执行 Bytecode、ABI、构造参数和 Gas 预检。
             </p>
             <button
               onClick={handleDeploy}
@@ -981,18 +997,18 @@ export default function Deploy() {
             >
               {status === "pending" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Rocket className="h-4 w-4" />}
               {status === "pending"
-                ? deployPhase === "preflight"
-                  ? mode === "factory" ? "正在预检 Factory…" : "正在预检…"
-                  : mode === "factory" ? "正在创建代币…" : "部署中…"
+                  ? deployPhase === "preflight"
+                    ? "正在预检…"
+                    : "部署中…"
                 : !wallet.isConnected
                   ? "连接钱包"
                   : isWrongNetwork
                     ? "切换网络"
                     : !deploymentReady
-                      ? mode === "factory" ? "请先完善发币参数" : "请先完成部署参数"
-                      : mode === "factory" ? "通过 Snowball Factory 发币" : "钱包直接部署"}
+                      ? "请先完成部署参数"
+                      : "跨链钱包直接部署"}
             </button>
-          </div>
+          </div>}
 
           {/* Status card */}
           {(status === "error" || status === "success") && (
@@ -1048,11 +1064,6 @@ export default function Deploy() {
               )}
 
               {status === "error" && <TransactionError summary={errorMessage} details={errorDetails} />}
-              {status === "success" && feeWarning && (
-                <div className="mt-4">
-                  <TransactionError summary={feeWarning.summary} details={feeWarning.details} />
-                </div>
-              )}
             </div>
           )}
 
@@ -1060,22 +1071,22 @@ export default function Deploy() {
           <div className="rounded-xl border border-[#25282C] bg-[#111215] p-4">
             <div className="mb-2 flex items-start gap-2">
               <Info className="mt-0.5 h-4 w-4 text-[#2EDEDB]" />
-              <span className="text-sm font-medium text-white">{mode === "factory" ? "Snowball 工厂发币流程" : "部署流程"}</span>
+              <span className="text-sm font-medium text-white">{mode === "factory" ? "KIMI 工厂发币流程" : "部署流程"}</span>
             </div>
             {mode === "factory" ? (
               <ol className="list-decimal space-y-1 pl-4 text-xs text-[#9CA3AF]">
                 <li>填写名称、符号、整数总量及可选税率</li>
-                <li>连接 BSC 钱包并读取 Factory 实时创建费</li>
+                <li>连接 BSC 钱包并读取 KIMI 发币工厂实时创建费</li>
                 <li>校验运行时代码、参数、静态调用和 Gas</li>
-                <li>钱包确认 createToken 交易，成功后读取 TokenCreated 事件</li>
+                <li>先销毁 20,000 KIMI，再确认 createToken 交易</li>
                 <li>新代币会自动保存到「已发代币」</li>
               </ol>
             ) : (
               <ol className="list-decimal space-y-1 pl-4 text-xs text-[#9CA3AF]">
                 <li>导入编译 Artifact，或填写 creation Bytecode + ABI</li>
                 <li>选择目标网络并连接钱包</li>
-                <li>系统先预检参数与 Gas，再请求钱包部署</li>
-                <li>选择 KIMI 模式时，部署成功后才支付费用</li>
+                <li>系统先预检参数与 Gas</li>
+                <li>BSC 部署先销毁 20,000 KIMI，再请求钱包部署</li>
                 <li>成功后可在「已发代币」查看</li>
               </ol>
             )}

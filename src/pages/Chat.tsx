@@ -31,6 +31,7 @@ import { FLAP_SYSTEM_PROMPT } from "@/lib/flapContext";
 import { SyntaxHighlighter, vscDarkPlus } from "@/lib/syntaxHighlighter";
 import { cn } from "@/lib/utils";
 import { safeRemoveItem, safeSetItem } from "@/lib/storage";
+import { AiSecurityNotice } from "@/components/AiSecurityNotice";
 
 const vaultTypes = [
   { value: "mint-treasury", label: "Mint Treasury", mode: "Mint", icon: Box },
@@ -323,6 +324,8 @@ export default function Chat() {
           </button>
         </div>
       </div>
+
+      <AiSecurityNotice />
 
       <div className="flex flex-1 flex-col gap-4 min-h-0 lg:flex-row lg:overflow-hidden">
         {/* History sidebar - collapsible */}

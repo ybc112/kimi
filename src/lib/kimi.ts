@@ -1,23 +1,20 @@
 import { ChatRequest } from "@/types";
-import { supabase } from "./supabase";
+import { invokeProtectedAiFunction } from "./aiSession";
 
 // DeepSeek's current API only accepts the v4 model identifiers below.
 // Keep the model in one place so every feature uses the same supported value.
 export const DEFAULT_MODEL = "deepseek-v4-flash";
 
 export async function sendChatMessage(request: ChatRequest): Promise<string> {
-  const { data, error } = await supabase.functions.invoke("deepseek-chat", {
-    body: {
+  const data = await invokeProtectedAiFunction<{ choices?: Array<{ message?: { content?: unknown } }> }>(
+    "deepseek-chat",
+    {
       model: request.model || DEFAULT_MODEL,
       messages: request.messages,
       stream: false,
       temperature: request.temperature ?? 0.3,
-    },
-  });
-
-  if (error) {
-    throw new Error(error.message || "AI API error");
-  }
+    }
+  );
 
   const content = data?.choices?.[0]?.message?.content;
 
@@ -36,19 +33,16 @@ export interface GenerateImageRequest {
 }
 
 export async function generateImage(request: GenerateImageRequest): Promise<string> {
-  const { data, error } = await supabase.functions.invoke("generate-image", {
-    body: {
+  const data = await invokeProtectedAiFunction<{ data?: Array<{ b64_json?: unknown; url?: unknown }> }>(
+    "generate-image",
+    {
       model: request.model || "gpt-image-2",
       prompt: request.prompt,
       n: request.n ?? 1,
       size: request.size || "1024x1024",
       response_format: "b64_json",
-    },
-  });
-
-  if (error) {
-    throw new Error(error.message || "Image API error");
-  }
+    }
+  );
 
   const item = data?.data?.[0];
   const b64 = item?.b64_json;

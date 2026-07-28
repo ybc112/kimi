@@ -97,8 +97,8 @@ export function SnowballFactoryForm({
                 <Factory className="h-4 w-4 text-[#D0FF00]" />
               </span>
               <div>
-                <h3 className="font-semibold text-white">Snowball 普通发射工厂</h3>
-                <p className="text-xs text-[#9CA3AF]">调用 SnowballLaunchpad.createToken，不再使用通用 deploy(bytes,bytes)</p>
+                <h3 className="font-semibold text-white">KIMI 普通发币工厂</h3>
+                <p className="text-xs text-[#9CA3AF]">底层调用已核验的普通代币工厂合约，不使用通用 deploy(bytes,bytes)</p>
               </div>
             </div>
             <code className="mt-3 block break-all text-xs text-[#B8BDC5]">{SNOWBALL_LAUNCHPAD_ADDRESS}</code>
@@ -165,7 +165,7 @@ export function SnowballFactoryForm({
       <section className="rounded-2xl border border-[#25282C] bg-[#111215] p-4 sm:p-5">
         <div className="mb-4">
           <h3 className="font-semibold text-white">代币基础参数</h3>
-          <p className="mt-1 text-xs text-[#9CA3AF]">SnowballToken 的 decimals 固定为 0，总量请直接填写整数。</p>
+          <p className="mt-1 text-xs text-[#9CA3AF]">KIMI 普通代币模板的 decimals 固定为 0，总量请直接填写整数。</p>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div>
@@ -175,7 +175,7 @@ export function SnowballFactoryForm({
               value={form.name}
               onChange={(event) => onChange("name", event.target.value)}
               className="kimi-input"
-              placeholder="Snowball Token"
+              placeholder="KIMI Token"
             />
           </div>
           <div>
@@ -185,7 +185,7 @@ export function SnowballFactoryForm({
               value={form.symbol}
               onChange={(event) => onChange("symbol", event.target.value.toUpperCase())}
               className="kimi-input"
-              placeholder="SNOW"
+              placeholder="KIMI"
             />
           </div>
           <div>

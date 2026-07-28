@@ -13,7 +13,8 @@
     "contracts:compile": "node scripts/compile-contracts.mjs",
     "templates:generate": "node scripts/generate-deploy-templates.mjs",
     "templates:check": "node scripts/generate-deploy-templates.mjs --check",
-    "verify": "npm run check && npm run lint && npm run test && npm run contracts:compile && npm run templates:check && npm run build"
+    "secrets:check": "node scripts/check-secrets.mjs",
+    "verify": "npm run secrets:check && npm run check && npm run lint && npm run test && npm run contracts:compile && npm run templates:check && npm run build"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.8",

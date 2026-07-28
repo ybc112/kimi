@@ -163,7 +163,6 @@ export default function FlapLaunch() {
   const [launchStep, setLaunchStep] = useState<"preflight" | "launch" | "fee">("preflight");
   const [result, setResult] = useState<{ address: string; txHash: string } | null>(null);
   const [launchError, setLaunchError] = useState<{ summary: string; details: string } | null>(null);
-  const [feeWarning, setFeeWarning] = useState<{ summary: string; details: string } | null>(null);
   const internalValidationMessage = useMemo(() => {
     try {
       buildInternalLaunchParams(form, wallet.account || "0x000000000000000000000000000000000000dEaD");
@@ -201,10 +200,10 @@ export default function FlapLaunch() {
     setLaunching(true);
     setLaunchStep("preflight");
     setLaunchError(null);
-    setFeeWarning(null);
     setResult(null);
     addLog({ type: "info", message: "正在预检站内发币参数" });
 
+    let kimiBurnTxHash = "";
     try {
       const params = buildInternalLaunchParams(form, wallet.account);
 
@@ -218,6 +217,11 @@ export default function FlapLaunch() {
         message: "站内发币预检通过",
         detail: `预计 Gas ${preflight.gasEstimate.toString()}，预计地址 ${preflight.predictedToken}`,
       });
+
+      setLaunchStep("fee");
+      const burnResult = await burnKimiTokens({ signer: wallet.signer, amount: DEPLOY_BURN_AMOUNT });
+      kimiBurnTxHash = burnResult.txHash;
+      addLog({ type: "success", message: "已销毁 20,000 KIMI 发币费用", detail: burnResult.txHash });
 
       setLaunchStep("launch");
       const launch = await submitCreateToken(wallet.signer, params, preflight.fee);
@@ -245,26 +249,19 @@ export default function FlapLaunch() {
         });
       }
 
-      setLaunchStep("fee");
-      try {
-        const burnResult = await burnKimiTokens({ signer: wallet.signer, amount: DEPLOY_BURN_AMOUNT });
-        addLog({ type: "success", message: "已销毁 20,000 KIMI 发币费用", detail: burnResult.txHash });
-      } catch (feeError) {
-        const friendly = formatContractError(feeError, "KIMI 费用支付失败");
-        setFeeWarning({
-          summary: `代币已经创建，但 20,000 KIMI 费用未完成：${friendly.summary}`,
-          details: friendly.details,
-        });
-        addLog({ type: "error", message: "代币已创建，但 KIMI 费用未完成", detail: friendly.details });
-      }
-
       addLog({ type: "success", message: "站内一键发币成功", detail: launch.tokenAddress });
       showToast({ type: "success", message: "代币创建成功" });
     } catch (error) {
       const friendly = formatContractError(error, "站内一键发币失败");
-      setLaunchError(friendly);
-      addLog({ type: "error", message: "站内一键发币失败", detail: friendly.details });
-      showToast({ type: "error", message: friendly.summary });
+      const failure = kimiBurnTxHash
+        ? {
+            summary: `20,000 KIMI 已销毁，但代币创建未完成：${friendly.summary}`,
+            details: `${friendly.details}\nKIMI 销毁交易：https://bscscan.com/tx/${kimiBurnTxHash}`,
+          }
+        : friendly;
+      setLaunchError(failure);
+      addLog({ type: "error", message: "站内一键发币失败", detail: failure.details });
+      showToast({ type: "error", message: failure.summary });
     } finally {
       setLaunching(false);
     }
@@ -490,7 +487,7 @@ export default function FlapLaunch() {
 
           <div className="mt-4 rounded-lg border border-[#2EDEDB]/20 bg-[#2EDEDB]/5 p-3 text-xs leading-relaxed text-[#2EDEDB]">
             <Info className="mb-1 mr-1 inline-block h-3.5 w-3.5" />
-            站内模式直接调用已验证的 Snowball Factory，并使用默认分红代币 USDT；税收全部作为分红。
+            站内模式直接调用已验证的 KIMI 发币工厂，并使用默认分红代币 USDT；税收全部作为分红。
             <code className="mt-2 block break-all rounded bg-black/20 p-2 text-[11px] text-white">{SNOWBALL_LAUNCHPAD_ADDRESS}</code>
           </div>
 
@@ -519,12 +516,6 @@ export default function FlapLaunch() {
             </div>
           )}
 
-          {feeWarning && (
-            <div className="mt-4">
-              <TransactionError summary={feeWarning.summary} details={feeWarning.details} />
-            </div>
-          )}
-
           {wallet.error && (
             <div className="mt-4">
               <TransactionError summary={wallet.error} />
@@ -536,6 +527,11 @@ export default function FlapLaunch() {
               {internalValidationMessage}
             </p>
           )}
+
+          <div className="mt-4 flex items-start gap-2 rounded-lg border border-[#F59E0B]/30 bg-[#F59E0B]/10 px-3 py-2 text-xs leading-relaxed text-[#FCD34D]">
+            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>预检通过后，钱包会先确认销毁 20,000 KIMI，再确认发币交易；销毁确认后不可撤销。</span>
+          </div>
 
           <button
             onClick={handleInternalLaunch}
@@ -555,7 +551,7 @@ export default function FlapLaunch() {
               ? launchStep === "preflight"
                 ? "正在安全预检…"
                 : launchStep === "fee"
-                  ? "代币已创建，正在支付 KIMI…"
+                  ? "正在销毁 20,000 KIMI…"
                   : "正在链上创建代币…"
               : !wallet.isConnected
               ? "连接钱包"
@@ -563,7 +559,7 @@ export default function FlapLaunch() {
               ? "切换到 BSC"
               : internalValidationMessage
               ? "请先完善发币参数"
-              : "确认创建代币"}
+              : "销毁 20,000 KIMI 并创建代币"}
           </button>
         </div>
       )}

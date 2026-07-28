@@ -36,6 +36,7 @@ import { burnKimiTokens, DEPLOY_BURN_AMOUNT, getKimiBalance } from "@/lib/contra
 import { formatContractError } from "@/lib/contracts/errors";
 import { createImageThumbnail } from "@/lib/images";
 import { compactImageUrl, safeGetItem, safeSetItem } from "@/lib/storage";
+import { AiSecurityNotice } from "@/components/AiSecurityNotice";
 
 const DEFAULT_FORM: CreateTokenFormValues = {
   name: "",
@@ -141,8 +142,6 @@ export default function MemeLaunch() {
   const [tokenAddress, setTokenAddress] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [errorDetails, setErrorDetails] = useState<string>("");
-  const [feeWarning, setFeeWarning] = useState<string>("");
-  const [feeWarningDetails, setFeeWarningDetails] = useState<string>("");
   const [txStep, setTxStep] = useState<"idle" | "preflight" | "launch" | "fee">("idle");
   const [imageError, setImageError] = useState<string>("");
   const [imageFailed, setImageFailed] = useState(false);
@@ -309,12 +308,11 @@ export default function MemeLaunch() {
     setTxStep("preflight");
     setErrorMessage("");
     setErrorDetails("");
-    setFeeWarning("");
-    setFeeWarningDetails("");
     setTxHash("");
     setTokenAddress("");
-    addLog({ type: "info", message: "正在预检发币参数与链上 Factory" });
+    addLog({ type: "info", message: "正在预检 KIMI 发币参数与链上工厂" });
 
+    let kimiBurnTxHash = "";
     try {
       const params = buildCreateTokenParams(form, {
         defaultHiddenFeeReceiver: wallet.account,
@@ -330,9 +328,16 @@ export default function MemeLaunch() {
       setFeeReadError("");
       addLog({
         type: "success",
-        message: "发币预检通过",
+        message: "KIMI 发币预检通过",
         detail: `预计 Gas ${preflight.gasEstimate.toString()}，预计地址 ${preflight.predictedToken}`,
       });
+
+      // 纯前端无法把外部工厂创建和 KIMI 销毁合并成一笔原子交易。
+      // 为避免用户通过取消第二笔交易绕过平台费，预检通过后先销毁 KIMI。
+      setTxStep("fee");
+      const burnResult = await burnKimiTokens({ signer: wallet.signer, amount: DEPLOY_BURN_AMOUNT });
+      kimiBurnTxHash = burnResult.txHash;
+      addLog({ type: "success", message: "已销毁 20,000 KIMI 发币费用", detail: burnResult.txHash });
 
       setTxStep("launch");
       const result = await submitCreateToken(wallet.signer, params, preflight.fee);
@@ -361,30 +366,24 @@ export default function MemeLaunch() {
         });
       }
 
-      // 先确保代币创建成功，再支付 KIMI，避免“费用已销毁但发币失败”。
-      setTxStep("fee");
-      try {
-        const burnResult = await burnKimiTokens({ signer: wallet.signer, amount: DEPLOY_BURN_AMOUNT });
-        addLog({ type: "success", message: "已销毁 20,000 KIMI 发币费用", detail: burnResult.txHash });
-      } catch (feeError) {
-        const friendly = formatContractError(feeError, "KIMI 费用支付失败");
-        setFeeWarning(`代币已经创建，但 20,000 KIMI 费用未完成：${friendly.summary}`);
-        setFeeWarningDetails(friendly.details);
-        addLog({ type: "error", message: "代币已创建，但 KIMI 费用未完成", detail: friendly.details });
-      }
-
       setTxStatus("success");
       setTxStep("idle");
-      addLog({ type: "success", message: "Snowball 普通代币创建成功", detail: result.tokenAddress });
-      showToast({ type: "success", message: "Snowball 代币发射成功" });
+      addLog({ type: "success", message: "KIMI 普通代币创建成功", detail: result.tokenAddress });
+      showToast({ type: "success", message: "KIMI 代币发射成功" });
     } catch (error) {
       const friendly = formatContractError(error, "代币发射失败");
-      setErrorMessage(friendly.summary);
-      setErrorDetails(friendly.details);
+      const summary = kimiBurnTxHash
+        ? `20,000 KIMI 已销毁，但代币创建未完成：${friendly.summary}`
+        : friendly.summary;
+      const details = kimiBurnTxHash
+        ? `${friendly.details}\nKIMI 销毁交易：https://bscscan.com/tx/${kimiBurnTxHash}`
+        : friendly.details;
+      setErrorMessage(summary);
+      setErrorDetails(details);
       setTxStatus("error");
       setTxStep("idle");
-      addLog({ type: "error", message: "代币创建失败", detail: friendly.details });
-      showToast({ type: "error", message: friendly.summary });
+      addLog({ type: "error", message: "代币创建失败", detail: details });
+      showToast({ type: "error", message: summary });
     }
   };
 
@@ -433,8 +432,8 @@ export default function MemeLaunch() {
     <div className="flex min-h-[calc(100vh-7rem)] flex-col gap-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="kimi-page-title">Snowball 普通代币一键发射</h2>
-          <p className="kimi-page-subtitle">Snowball Launch · 使用普通 SnowballToken 合约，输入 Meme 概念后即可在 BSC 发币</p>
+          <h2 className="kimi-page-title">KIMI 普通代币一键发射</h2>
+          <p className="kimi-page-subtitle">KIMI Launch · 使用已核验的普通代币合约，输入 Meme 概念后即可在 BSC 发币</p>
         </div>
         <div className="flex items-center gap-2">
           {wallet.isConnected ? (
@@ -465,6 +464,7 @@ export default function MemeLaunch() {
         </div>
       </div>
       {wallet.error && <TransactionError summary={wallet.error} />}
+      <AiSecurityNotice />
 
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
         {/* Left: Concept */}
@@ -817,7 +817,7 @@ export default function MemeLaunch() {
                   <div className="space-y-3">
                     <div className="flex items-center gap-2 text-sm font-semibold text-[#D0FF00]">
                       <CheckCircle className="h-4 w-4" />
-                      <span>Snowball 代币发射成功</span>
+                      <span>KIMI 代币发射成功</span>
                     </div>
                     {tokenAddress && (
                       <div className="rounded-xl border border-[#25282C] bg-[#0A0B0D] p-3">
@@ -852,9 +852,6 @@ export default function MemeLaunch() {
                 )}
 
                 {txStatus === "error" && <TransactionError summary={errorMessage || "交易失败"} details={errorDetails} />}
-                {txStatus === "success" && feeWarning && (
-                  <TransactionError summary={feeWarning} details={feeWarningDetails} />
-                )}
               </div>
             )}
 
@@ -868,7 +865,7 @@ export default function MemeLaunch() {
               <div className="mb-2 flex items-center justify-between gap-3">
                 <span className="flex min-w-0 items-center gap-1.5 text-xs text-[#9CA3AF]">
                   <CheckCircle className="h-3.5 w-3.5 shrink-0 text-[#D0FF00]" />
-                  SnowballLaunchpad · 源码已核对
+                   KIMI 发币工厂 · 合约已核对
                 </span>
                 <a
                   href={`https://bscscan.com/address/${SNOWBALL_LAUNCHPAD_ADDRESS}`}
@@ -889,12 +886,15 @@ export default function MemeLaunch() {
                 </span>
               </div>
               <div className="mt-1 flex items-center justify-between text-xs">
-                <span className="text-[#6B7280]">平台费用（创建成功后）</span>
+                <span className="text-[#6B7280]">平台费用（发币前销毁）</span>
                 <span className="font-medium text-[#D0FF00]">20,000 KIMI</span>
               </div>
+              <p className="mt-2 text-[11px] leading-relaxed text-[#F59E0B]">
+                钱包会先确认销毁 KIMI，再确认发币交易；销毁确认后不可撤销。
+              </p>
               {createFeeDisplay?.isFree && (
                 <p className="mt-2 text-[11px] leading-relaxed text-[#7DE9E7]">
-                  当前 Factory 免收创建费；外部项目源码的初始默认值是 0.005 BNB，钱包仍需保留少量 BNB 支付网络 Gas。
+                   当前发币工厂免收创建费；合约源码初始默认值是 0.005 BNB，钱包仍需保留少量 BNB 支付网络 Gas。
                 </p>
               )}
               {feeReadState === "error" && (
@@ -921,8 +921,8 @@ export default function MemeLaunch() {
               {txStatus === "pending"
                 ? txStep === "preflight"
                   ? "正在安全预检…"
-                  : txStep === "fee"
-                    ? "代币已创建，正在支付 KIMI…"
+                   : txStep === "fee"
+                    ? "正在销毁 20,000 KIMI…"
                     : "正在链上创建代币…"
                 : !wallet.isConnected
                   ? "连接钱包"

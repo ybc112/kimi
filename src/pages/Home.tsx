@@ -67,8 +67,8 @@ const features = [
     color: "#FF6B6B",
   },
   {
-    title: "Snowball 发币",
-    description: "使用普通 SnowballToken 合约，输入 Meme 概念后连接钱包即可在 BSC 发射。",
+    title: "KIMI 普通发币",
+    description: "使用已核验的普通代币合约，输入 Meme 概念后连接钱包即可在 BSC 发射。",
     icon: Zap,
     to: "/meme-launch",
     color: "#A78BFA",
@@ -93,7 +93,7 @@ const stats = [
   { label: "AI 模型", value: "Kimi / DeepSeek-v4-flash", icon: Sparkles },
   { label: "部署网络", value: "BNB Smart Chain Mainnet", icon: Activity },
   {
-    label: "Snowball 发射台",
+    label: "KIMI 发射台",
     value: `${SNOWBALL_LAUNCHPAD_ADDRESS.slice(0, 8)}...${SNOWBALL_LAUNCHPAD_ADDRESS.slice(-6)}`,
     icon: ShieldCheck,
   },
