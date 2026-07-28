@@ -1,5 +1,18 @@
 import { useState, useMemo } from "react";
-import { Flame, Trophy, Eye, Activity, Search, ArrowUpRight, ArrowDownRight, RefreshCw, Loader2, TrendingUp } from "lucide-react";
+import {
+  Flame,
+  Trophy,
+  Eye,
+  Activity,
+  Search,
+  ArrowUpRight,
+  ArrowDownRight,
+  RefreshCw,
+  Loader2,
+  TrendingUp,
+  ExternalLink,
+  ShieldCheck,
+} from "lucide-react";
 import { useContractData } from "@/hooks/useContractData";
 import { cn } from "@/lib/utils";
 import Empty from "@/components/Empty";
@@ -7,7 +20,7 @@ import Empty from "@/components/Empty";
 const tabs = [
   { key: "gainers", label: "24h 涨幅榜" },
   { key: "new", label: "新币榜" },
-  { key: "search", label: "搜索榜" },
+  { key: "search", label: "热度榜" },
 ] as const;
 
 type TabKey = (typeof tabs)[number]["key"];
@@ -22,6 +35,7 @@ const tagColor: Record<string, string> = {
   "AI Oracle": "bg-[#60A5FA]/10 text-[#60A5FA]",
   Staking: "bg-[#F472B6]/10 text-[#F472B6]",
   Factory: "bg-[#9CA3AF]/10 text-[#9CA3AF]",
+  "官方 KIMI": "bg-[#D0FF00]/10 text-[#D0FF00]",
 };
 
 const shorten = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`;
@@ -59,35 +73,41 @@ function Sparkline({ data, change }: { data: number[]; change: string }) {
 }
 
 export default function Trending() {
-  const { trending, loading, refreshTrending } = useContractData();
+  const { trending, loading, trendingError, refreshTrending } = useContractData();
   const [activeTab, setActiveTab] = useState<TabKey>("gainers");
   const [search, setSearch] = useState("");
 
+  const ordered = useMemo(() => {
+    const next = [...trending];
+    if (activeTab === "gainers") {
+      next.sort((left, right) => Number(right.change24h.replace(/[^0-9.-]/g, "")) - Number(left.change24h.replace(/[^0-9.-]/g, "")));
+    } else if (activeTab === "new") {
+      next.sort((left, right) => (right.pairCreatedAt ?? 0) - (left.pairCreatedAt ?? 0));
+    } else {
+      next.sort((left, right) => right.hotScore - left.hotScore);
+    }
+    return next.map((item, index) => ({ ...item, rank: index + 1 }));
+  }, [activeTab, trending]);
+
   const filtered = useMemo(() => {
-    if (!search.trim()) return trending;
+    if (!search.trim()) return ordered;
     const s = search.toLowerCase();
-    return trending.filter(
+    return ordered.filter(
       (i) =>
         i.name.toLowerCase().includes(s) ||
         i.symbol.toLowerCase().includes(s) ||
         i.address.toLowerCase().includes(s)
     );
-  }, [trending, search]);
+  }, [ordered, search]);
 
-  const topItem = trending[0];
-  const totalVolume = useMemo(() => {
-    return trending.reduce((acc, cur) => {
-      const n = Number(cur.volume24h.replace(/[^0-9.]/g, "")) || 0;
-      return acc + n;
-    }, 0);
-  }, [trending]);
+  const topItem = ordered[0];
 
   return (
     <div className="flex min-h-[calc(100vh-8rem)] flex-col gap-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="kimi-page-title">热搜榜</h2>
-          <p className="kimi-page-subtitle">Trending · 实时 Vault、Factory 与合约热度排行</p>
+          <p className="kimi-page-subtitle">Trending · 官方 KIMI 的 PancakeSwap 实时行情与链上热度</p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <div className="relative w-full sm:w-64">
@@ -111,30 +131,37 @@ export default function Trending() {
         </div>
       </div>
 
+      {trendingError && (
+        <div className="flex items-start gap-2 rounded-xl border border-[#F59E0B]/25 bg-[#F59E0B]/5 px-4 py-3 text-xs text-[#FBBF24]">
+          <RefreshCw className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>实时行情暂时刷新失败，页面正在显示最近一次数据；官方 KIMI 仍会固定保留在榜单中。{trendingError}</span>
+        </div>
+      )}
+
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="kimi-card kimi-card-hover">
           <div className="mb-2 flex items-center gap-2 text-[#FF6B6B]">
             <Flame className="h-4 w-4" />
-            <span className="text-xs font-medium">24h 最热</span>
+            <span className="text-xs font-medium">24h 涨幅</span>
           </div>
-          <p className="text-2xl font-bold text-white">{topItem ? topItem.hotScore : "-"}</p>
+          <p className={cn("text-2xl font-bold", topItem?.change24h.startsWith("-") ? "text-[#FF6B6B]" : "text-[#34D399]")}>{topItem ? topItem.change24h : "-"}</p>
           <p className="text-xs text-[#6B7280]">{topItem ? topItem.name : "暂无数据"}</p>
         </div>
         <div className="kimi-card kimi-card-hover">
           <div className="mb-2 flex items-center gap-2 text-[#2EDEDB]">
             <Activity className="h-4 w-4" />
-            <span className="text-xs font-medium">实时搜索</span>
+            <span className="text-xs font-medium">24h 成交</span>
           </div>
-          <p className="text-2xl font-bold text-white">{trending.length ? (trending.length * 0.42).toFixed(1) + "w" : "-"}</p>
-          <p className="text-xs text-[#6B7280]">过去 1 小时</p>
+          <p className="text-2xl font-bold text-white">{topItem?.txCount24h ? topItem.txCount24h.toLocaleString("en-US") : "-"}</p>
+          <p className="text-xs text-[#6B7280]">PancakeSwap 买入 + 卖出</p>
         </div>
         <div className="kimi-card kimi-card-hover">
           <div className="mb-2 flex items-center gap-2 text-[#D0FF00]">
             <Eye className="h-4 w-4" />
-            <span className="text-xs font-medium">总浏览</span>
+            <span className="text-xs font-medium">24h 交易额</span>
           </div>
-          <p className="text-2xl font-bold text-white">{totalVolume ? totalVolume.toFixed(1) + "w" : "-"}</p>
-          <p className="text-xs text-[#6B7280]">全网合约页面</p>
+          <p className="text-2xl font-bold text-white">{topItem?.volume24h || "-"}</p>
+          <p className="text-xs text-[#6B7280]">流动性 {topItem?.liquidity || "--"}</p>
         </div>
       </div>
 
@@ -142,7 +169,7 @@ export default function Trending() {
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
             <Trophy className="h-5 w-5 text-[#FF6B6B]" />
-            <h3 className="text-base font-semibold text-white">今日热搜</h3>
+            <h3 className="text-base font-semibold text-white">官方币热搜</h3>
           </div>
           <div className="flex items-center gap-2">
             {tabs.map((t) => (
@@ -159,7 +186,7 @@ export default function Trending() {
                 {t.label}
               </button>
             ))}
-            <span className="ml-2 text-xs text-[#6B7280]">每小时更新</span>
+            <span className="ml-2 hidden text-xs text-[#6B7280] sm:inline">实时刷新</span>
           </div>
         </div>
 
@@ -171,13 +198,15 @@ export default function Trending() {
         ) : filtered.length === 0 ? (
           <Empty
             icon={<TrendingUp className="h-7 w-7" />}
-            title="暂无热搜数据"
-            subtitle="点击右上角「刷新」按钮获取最新热度排行"
+            title={search.trim() ? "未找到匹配代币" : "暂无热搜数据"}
+            subtitle={search.trim() ? "请检查名称、Symbol 或合约地址" : "点击右上角「刷新」按钮获取最新行情"}
             action={
-              <button onClick={refreshTrending} disabled={loading} className="kimi-btn-primary">
-                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                立即刷新
-              </button>
+              !search.trim() ? (
+                <button onClick={refreshTrending} disabled={loading} className="kimi-btn-primary">
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                  立即刷新
+                </button>
+              ) : undefined
             }
           />
         ) : (
@@ -186,11 +215,11 @@ export default function Trending() {
               const changeNum = Number(item.change24h.replace(/[^0-9.-]/g, ""));
               const isUp = changeNum >= 0;
               const TrendIcon = isUp ? ArrowUpRight : ArrowDownRight;
-              const tag = item.rank === 1 ? "Tax Vault" : ["Buyback", "Dividend", "Launch", "Treasury", "LP Vault", "AI Oracle", "Staking", "Factory"][item.rank % 9];
+              const tag = item.tag || (item.rank === 1 ? "Tax Vault" : ["Buyback", "Dividend", "Launch", "Treasury", "LP Vault", "AI Oracle", "Staking", "Factory"][item.rank % 9]);
               return (
                 <li
-                  key={`${activeTab}-${item.rank}`}
-                  className="group flex items-center gap-3 rounded-xl bg-[#0A0B0D] px-4 py-3 transition-colors hover:bg-[#1A1D21]"
+                  key={`${activeTab}-${item.address}`}
+                  className="group grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 rounded-xl bg-[#0A0B0D] px-4 py-3 transition-colors hover:bg-[#1A1D21] sm:flex sm:gap-3"
                 >
                   <span
                     className={cn(
@@ -208,8 +237,11 @@ export default function Trending() {
                   </span>
 
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate text-sm font-medium text-[#E8E8E8]">{item.name}</span>
+                    <div className="flex min-w-0 flex-wrap items-center gap-1.5 sm:flex-nowrap sm:gap-2">
+                      <div className="flex min-w-0 basis-full items-center gap-1.5 sm:basis-auto">
+                        <span className="truncate text-sm font-medium text-[#E8E8E8]">{item.name}</span>
+                        {item.isOfficial && <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-[#D0FF00]" aria-label="官方 KIMI" />}
+                      </div>
                       <span className="rounded bg-[#25282C] px-1.5 py-0.5 text-[10px] font-medium text-[#D0FF00]">
                         {item.symbol}
                       </span>
@@ -242,10 +274,22 @@ export default function Trending() {
                     </p>
                   </div>
 
-                  <div className="flex shrink-0 flex-col items-end gap-0.5 text-xs text-[#6B7280]">
+                  <div className="col-start-2 row-start-2 flex min-w-0 shrink-0 items-center justify-between gap-3 text-xs text-[#6B7280] sm:flex-col sm:items-end sm:justify-start sm:gap-0.5">
                     <span>{item.volume24h}</span>
                     <span className="text-[10px]">MCap {item.marketCap}</span>
                   </div>
+
+                  {item.url && (
+                    <a
+                      href={item.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="col-start-3 row-span-2 row-start-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[#25282C] text-[#9CA3AF] transition hover:border-[#D0FF00]/30 hover:text-[#D0FF00]"
+                      title="在 DexScreener 查看实时行情"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  )}
                 </li>
               );
             })}

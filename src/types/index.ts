@@ -67,6 +67,15 @@ export interface TrendingItem {
   marketCap: string;
   hotScore: number;
   sparkline: number[];
+  tag?: string;
+  url?: string;
+  pairAddress?: string;
+  liquidity?: string;
+  txCount24h?: number;
+  pairCreatedAt?: number;
+  updatedAt?: number;
+  isOfficial?: boolean;
+  source?: "dexscreener" | "fallback";
 }
 
 /** 首页今日统计 */

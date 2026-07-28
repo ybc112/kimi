@@ -1,10 +1,15 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import type { TodayStats, ActivityItem, TrendingItem } from "@/types";
 import { safeGetItem, safeSetItem } from "@/lib/storage";
+import {
+  createOfficialKimiFallback,
+  fetchOfficialKimiTrending,
+  readCachedOfficialKimi,
+} from "@/lib/trending";
 
 const STATS_KEY = "kimi-today-stats";
 const ACTIVITIES_KEY = "kimi-activities";
-const TRENDING_KEY = "kimi-trending";
+const TRENDING_KEY = "kimi-trending-v2";
 
 /**
  * 统一管理合约/平台数据的 hook。
@@ -15,6 +20,7 @@ export function useContractData() {
   const [activities, setActivities] = useState<ActivityItem[]>(() => readActivities());
   const [trending, setTrending] = useState<TrendingItem[]>(() => readTrending());
   const [loading, setLoading] = useState(false);
+  const [trendingError, setTrendingError] = useState<string | null>(null);
 
   useEffect(() => {
     safeSetItem(STATS_KEY, JSON.stringify(stats));
@@ -28,13 +34,43 @@ export function useContractData() {
     safeSetItem(TRENDING_KEY, JSON.stringify(trending));
   }, [trending]);
 
-  /** 触发一次模拟刷新，后续替换为真实 API / 合约事件 */
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    setLoading(true);
+    void fetchOfficialKimiTrending(controller.signal)
+      .then((item) => {
+        if (!active) return;
+        setTrending([item]);
+        setTrendingError(null);
+      })
+      .catch((error) => {
+        if (!active || controller.signal.aborted) return;
+        setTrending((current) => [readCachedOfficialKimi(current)]);
+        setTrendingError(error instanceof Error ? error.message : "官方 KIMI 行情暂时不可用");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, []);
+
+  /** 从 DexScreener 刷新官方 KIMI 的 PancakeSwap V2 实时行情。 */
   const refreshTrending = async () => {
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 800));
-    const next = generateMockTrending();
-    setTrending(next);
-    setLoading(false);
+    setTrendingError(null);
+    try {
+      const next = await fetchOfficialKimiTrending();
+      setTrending([next]);
+    } catch (error) {
+      setTrending((current) => [readCachedOfficialKimi(current)]);
+      setTrendingError(error instanceof Error ? error.message : "官方 KIMI 行情暂时不可用");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const recordGenerate = () => {
@@ -61,6 +97,7 @@ export function useContractData() {
     activities,
     trending,
     loading,
+    trendingError,
     refreshTrending,
     recordGenerate,
     recordDeploy,
@@ -92,11 +129,11 @@ function readActivities(): ActivityItem[] {
 function readTrending(): TrendingItem[] {
   try {
     const raw = safeGetItem(TRENDING_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) return [readCachedOfficialKimi(JSON.parse(raw))];
   } catch {
     // 忽略损坏的本地缓存并回退到默认值。
   }
-  return [];
+  return [createOfficialKimiFallback()];
 }
 
 function pushActivity(
@@ -108,40 +145,4 @@ function pushActivity(
     { id: crypto.randomUUID(), text, time: Date.now(), type },
     ...prev,
   ].slice(0, 50));
-}
-
-function generateMockTrending(): TrendingItem[] {
-  const names = [
-    ["Flap Genesis Vault", "FGV"],
-    ["PandaSwap Buyback", "PANDA"],
-    ["MoonBeam Dividend", "MBD"],
-    ["Satoshi Meme", "SATO"],
-    ["Aurora Treasury", "AURA"],
-    ["Nova Liquidity", "NOVA"],
-    ["Quantum AI Oracle", "QAO"],
-    ["Pepe Vault V2", "PEPEV2"],
-    ["DragonStake Pool", "DRAGON"],
-    ["CyberBond Factory", "CYBER"],
-  ];
-  return names.map(([name, symbol], i) => {
-    const base = 0.0001 + Math.random() * 0.01;
-    const change = (Math.random() * 40 - 10).toFixed(2);
-    const sparkline = Array.from({ length: 10 }, () => Math.floor(Math.random() * 60 + 30));
-    return {
-      rank: i + 1,
-      name,
-      symbol,
-      address: i === 0 ? "0x9aa9cadec931c58c2a22bbc5381b266d12887777" : randomAddress(),
-      price: `$${base.toFixed(6)}`,
-      change24h: `${Number(change) >= 0 ? "+" : ""}${change}%`,
-      volume24h: `$${(Math.random() * 900 + 10).toFixed(1)}k`,
-      marketCap: `$${(Math.random() * 5 + 0.5).toFixed(2)}m`,
-      hotScore: Math.floor(1000 - i * 80 + Math.random() * 50),
-      sparkline,
-    };
-  });
-}
-
-function randomAddress() {
-  return "0x" + Array.from({ length: 40 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
 }
