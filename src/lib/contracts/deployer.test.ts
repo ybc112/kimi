@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { ethers } from "ethers";
 import {
+  KIMI_BURN_ADDRESS,
+  KIMI_TOKEN_ADDRESS,
   encodeConstructorArgs,
   extractDeploymentArtifact,
   normalizeBytecode,
@@ -20,6 +22,11 @@ const constructorAbi = JSON.stringify([
 ]);
 
 describe("deployment input validation", () => {
+  it("uses the official KIMI token and an irreversible burn receiver", () => {
+    expect(KIMI_TOKEN_ADDRESS).toBe("0x9Aa9CADEc931C58c2a22Bbc5381b266d12887777");
+    expect(KIMI_BURN_ADDRESS).toBe("0x000000000000000000000000000000000000dEaD");
+  });
+
   it("rejects empty creation bytecode", () => {
     expect(() => normalizeBytecode("0x")).toThrow(/不能只填写 0x/);
   });

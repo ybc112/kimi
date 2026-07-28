@@ -26,7 +26,7 @@ import {
   preflightCreateToken,
   submitCreateToken,
 } from "@/lib/contracts/snowball";
-import { burnKimiTokens, DEPLOY_BURN_AMOUNT, getKimiBalance } from "@/lib/contracts/deployer";
+import { chargeKimiTokens, DEPLOY_BURN_AMOUNT, getKimiBalance } from "@/lib/contracts/deployer";
 import { formatContractError } from "@/lib/contracts/errors";
 import { TransactionError } from "@/components/TransactionError";
 import { safeGetItem, safeSetItem } from "@/lib/storage";
@@ -219,9 +219,9 @@ export default function FlapLaunch() {
       });
 
       setLaunchStep("fee");
-      const burnResult = await burnKimiTokens({ signer: wallet.signer, amount: DEPLOY_BURN_AMOUNT });
+      const burnResult = await chargeKimiTokens({ signer: wallet.signer, amount: DEPLOY_BURN_AMOUNT });
       kimiBurnTxHash = burnResult.txHash;
-      addLog({ type: "success", message: "已销毁 20,000 KIMI 发币费用", detail: burnResult.txHash });
+      addLog({ type: "success", message: "20,000 官方 KIMI 已转入销毁地址", detail: burnResult.txHash });
 
       setLaunchStep("launch");
       const launch = await submitCreateToken(wallet.signer, params, preflight.fee);
@@ -239,6 +239,7 @@ export default function FlapLaunch() {
           status: "success",
           totalSupply: form.supply,
           type: "flap",
+          tradingOpen: false,
         });
         recordLaunch(form.name);
       } catch (recordError) {
@@ -530,7 +531,7 @@ export default function FlapLaunch() {
 
           <div className="mt-4 flex items-start gap-2 rounded-lg border border-[#F59E0B]/30 bg-[#F59E0B]/10 px-3 py-2 text-xs leading-relaxed text-[#FCD34D]">
             <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            <span>预检通过后，钱包会先确认销毁 20,000 KIMI，再确认发币交易；销毁确认后不可撤销。</span>
+            <span>预检通过后，钱包会先确认把 20,000 官方 KIMI 转入销毁地址，再确认发币交易；扣费确认后不可撤销。</span>
           </div>
 
           <button
@@ -551,7 +552,7 @@ export default function FlapLaunch() {
               ? launchStep === "preflight"
                 ? "正在安全预检…"
                 : launchStep === "fee"
-                  ? "正在销毁 20,000 KIMI…"
+                  ? "正在扣除 20,000 官方 KIMI…"
                   : "正在链上创建代币…"
               : !wallet.isConnected
               ? "连接钱包"
@@ -559,7 +560,7 @@ export default function FlapLaunch() {
               ? "切换到 BSC"
               : internalValidationMessage
               ? "请先完善发币参数"
-              : "销毁 20,000 KIMI 并创建代币"}
+              : "扣除 20,000 官方 KIMI 并创建代币"}
           </button>
         </div>
       )}

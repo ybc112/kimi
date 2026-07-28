@@ -7,10 +7,11 @@ Kimi Flap Vault 是一个面向 BNB Smart Chain 的合约生成、KIMI 普通发
 - 发币参数会在钱包交易前严格校验，空的隐藏费接收地址自动使用当前钱包。
 - 发币会读取链上实时 `createFee`，并先执行 `staticCall` 与 Gas 预检。
 - 当前主网 Factory 的实时 `createFee()` 为 `0`；页面显示“当前免创建费（0 BNB）”，不会把读取失败伪装成 0.0000 或源码默认值。
-- BSC 发币/部署会先完成静态调用与 Gas 预检，再销毁 20,000 KIMI，移除不扣 KIMI 的 BSC 直接部署入口。
+- BSC 发币/部署会先完成静态调用与 Gas 预检，再把 20,000 官方 KIMI 转入销毁地址，移除不扣 KIMI 的 BSC 直接部署入口。
 - “工厂部署”使用 KIMI 品牌的普通发币流程，底层调用已核验的 `SnowballLaunchpad.createToken`，不再错误调用 `deploy(bytes,bytes)`。
 - 页面会核对 Factory 主网运行时代码哈希；不匹配 `SnowballLaunchpad.sol` 时会阻止交易。
-- DeepSeek 与生图接口要求钱包签名、至少持有 20,000 KIMI，并使用 10 分钟短会话；服务端按钱包和 IP 限流，同时锁定模型、请求长度与生图次数。
+- DeepSeek 与生图接口要求钱包签名、至少持有 20,000 官方 KIMI，并使用 10 分钟短会话；服务端按钱包和 IP 限流，同时锁定模型、请求长度与生图次数。
+- “已发代币”会读取链上 `tradingOpen` 与 PancakeSwap Pair；Owner 可按“精确授权 → 加入 KIMI 代币/BNB 流动性 → openTrading()”完成开盘，LP Token 默认返回 Owner 钱包。
 - 上游 API Key 仅从 Supabase Secrets 读取；`npm run verify` 会扫描当前代码，阻止常见 API Key、GitHub Token 和私钥再次提交。
 - 发币成功后的本地记录使用有上限的安全缓存；AI 图片会压缩为缩略图，浏览器存储满额时也不会把链上成功误报为失败。
 - Render 静态部署会为所有 React 路由生成真实入口文件，直接刷新 `/meme-launch`、`/deploy` 等页面不再返回 404。
@@ -23,7 +24,8 @@ Kimi Flap Vault 是一个面向 BNB Smart Chain 的合约生成、KIMI 普通发
 ## 已配置的 BSC 合约
 
 - Snowball Launchpad：`0x08b6e62c01dcE3eACFc558609427348689c7773E`
-- KIMI：`0x7A4b49cCAaDF69C4FCfd2223F8E3e30dAAb9F123`
+- 官方 KIMI：`0x9Aa9CADEc931C58c2a22Bbc5381b266d12887777`
+- KIMI 销毁接收地址：`0x000000000000000000000000000000000000dEaD`
 - 默认分红代币 USDT：`0x55d398326f99059fF775485246999027B3197955`
 - Snowball Launchpad 运行时代码哈希：`0x9adb672620bf25cc185a47d22a400f8298ef9a350923eff628e7fda5820b4fcc`
 
@@ -49,7 +51,7 @@ npm run verify
 1. 打开“合约部署”，选择“固定总量 ERC-20”或“可增发 / 可销毁 ERC-20”。
 2. 填写代币名称、符号和完整代币数量；页面会自动填充 creation Bytecode、ABI 与构造参数。
 3. 等待“部署就绪检查”显示 `3/3`，选择网络并连接钱包。
-4. BSC 部署会先完成 Gas 预检，再依次请求钱包确认销毁 20,000 KIMI 和部署交易。
+4. BSC 部署会先完成 Gas 预检，再依次请求钱包确认把 20,000 官方 KIMI 转入销毁地址和部署交易。
 5. Ethereum、Arbitrum 与 Base 因没有 KIMI 合约，暂时保留跨链钱包直接部署入口。
 
 ### 自定义合约 / Artifact
@@ -67,14 +69,22 @@ npm run verify
 4. SnowballToken 的 `decimals()` 固定为 `0`，总供应量不要乘 `10^18`。
 5. Factory 源码初始创建费为 `0.005 BNB`，但 owner 可链上修改；页面始终以交易前读取的实时 `createFee()` 为准。实时值为 0 时会显示“当前免创建费（0 BNB）”，网络 Gas 仍需用 BNB 支付。
 
+### PancakeSwap 开盘
+
+1. 发币成功后打开“已发代币”，页面会区分“部署成功”和链上的“待开盘 / 已开盘”。
+2. 点击“开盘”，连接代币 Owner 钱包并填写初始代币数量、BNB 数量和滑点。
+3. 钱包通常依次确认精确授权、PancakeSwap V2 加池和 `openTrading()`；已有足够授权时会自动跳过第一笔。
+4. Router 自动创建 Pair，不需要单独调用 `createDefaultPair()`；只有检测到真实流动性后，页面才会继续开启交易。
+5. LP Token 返回当前 Owner 钱包，不会由页面擅自销毁或锁仓。已有流动性时，也可直接使用现有池开启交易。
+
 ## 费用说明
 
-KIMI 销毁和外部 Factory 创建无法由纯前端合并成一笔原子交易。为了防止用户在创建成功后取消 KIMI 交易来绕过费用，当前实现会先完成全部预检，再销毁 KIMI，最后执行发币/部署。因此钱包需要确认两笔交易；KIMI 销毁确认后不可撤销。如果需要真正的原子收费与失败自动回滚，仍需部署新的链上包装 Factory。
+官方 KIMI 不提供 `burn(uint256)`。页面会调用官方 KIMI 的 `transfer`，把 20,000 KIMI 转入 `0x000000000000000000000000000000000000dEaD`。KIMI 扣费和外部 Factory 创建无法由纯前端合并成一笔原子交易，因此当前实现会先完成全部预检，再扣费，最后执行发币/部署；扣费确认后不可撤销。如果需要真正的原子收费与失败自动回滚，仍需部署新的链上包装 Factory。
 
 ## AI API 安全
 
 - 浏览器中只有 Supabase publishable key；DeepSeek 和生图供应商 Key 不进入前端构建。
-- AI 请求先由钱包签名换取 10 分钟短会话，服务端会读取 BSC 上的 KIMI 持仓，默认要求至少 20,000 KIMI。
+- AI 请求先由钱包签名换取 10 分钟短会话，服务端会读取 BSC 上的官方 KIMI 持仓，默认要求至少 20,000 KIMI。
 - DeepSeek 默认每钱包每分钟最多 6 次；生图默认每钱包每 10 分钟最多 2 次，并额外执行 IP 限流。
 - 可通过 Supabase Secret `BLOCKED_IPS` 立即封禁已确认的盗刷来源 IP；钱包签名和 KIMI 持仓校验仍会同时执行。
 - 旧版供应商 Key 曾进入 Git 历史，必须在供应商后台作废并生成新 Key；删除代码不能让已经泄露的 Key 恢复安全。

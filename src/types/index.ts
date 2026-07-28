@@ -49,6 +49,10 @@ export interface IssuedToken {
   totalSupply?: string;
   type: TokenType;
   imageUrl?: string;
+  tradingOpen?: boolean;
+  pairAddress?: string;
+  liquidityTxHash?: string;
+  openTradingTxHash?: string;
 }
 
 /** 热搜榜真实数据结构 */

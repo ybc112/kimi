@@ -26,7 +26,7 @@ import { useWallet } from "@/hooks/useWallet";
 import { cn } from "@/lib/utils";
 import {
   deployBytecode,
-  burnKimiTokens,
+  chargeKimiTokens,
   DEPLOY_BURN_AMOUNT,
   getExplorerUrl,
   parseConstructorArgs,
@@ -375,7 +375,7 @@ export default function Deploy() {
       if (isWrongNetwork) throw new Error(`当前网络不正确，请切换到 ${networkLabel}`);
       if (mode === "factory" && network !== "bsc") throw new Error("KIMI 发币工厂仅支持 BNB Smart Chain");
       if (chargeKimi && expectedChainId !== 56) throw new Error("KIMI 部署费目前只支持 BNB Smart Chain");
-      if (!chargeKimi && expectedChainId === 56) throw new Error("BSC 发币和部署必须先销毁 20,000 KIMI");
+      if (!chargeKimi && expectedChainId === 56) throw new Error("BSC 发币和部署必须先扣除 20,000 官方 KIMI");
 
       let result: { address: string; deployTxHash: string };
       let deployedName = tokenName || "Deployed Contract";
@@ -405,9 +405,9 @@ export default function Deploy() {
         });
         if (chargeKimi) {
           setDeployPhase("fee");
-          const burnResult = await burnKimiTokens({ signer, amount: DEPLOY_BURN_AMOUNT });
+          const burnResult = await chargeKimiTokens({ signer, amount: DEPLOY_BURN_AMOUNT });
           kimiBurnTxHash = burnResult.txHash;
-          addLog({ type: "success", message: "KIMI 部署费销毁成功", detail: `tx: ${burnResult.txHash}` });
+          addLog({ type: "success", message: "20,000 官方 KIMI 已转入销毁地址", detail: `tx: ${burnResult.txHash}` });
         }
         setDeployPhase("deploy");
         const launched = await submitCreateToken(signer, params, preflight.fee);
@@ -438,9 +438,9 @@ export default function Deploy() {
         addLog({ type: "success", message: "合约部署预检通过", detail: `预计 Gas ${gasEstimate.toString()}` });
         if (chargeKimi) {
           setDeployPhase("fee");
-          const burnResult = await burnKimiTokens({ signer, amount: DEPLOY_BURN_AMOUNT });
+          const burnResult = await chargeKimiTokens({ signer, amount: DEPLOY_BURN_AMOUNT });
           kimiBurnTxHash = burnResult.txHash;
-          addLog({ type: "success", message: "KIMI 部署费销毁成功", detail: `tx: ${burnResult.txHash}` });
+          addLog({ type: "success", message: "20,000 官方 KIMI 已转入销毁地址", detail: `tx: ${burnResult.txHash}` });
         }
         setDeployPhase("deploy");
         result = await deployBytecode({
@@ -468,6 +468,7 @@ export default function Deploy() {
           status: "success",
           totalSupply: deployedSupply,
           type: deployedType,
+          tradingOpen: mode === "factory" ? false : undefined,
         });
         if (mode === "factory") recordLaunch(deployedName);
         else recordDeploy(deployedName);
@@ -973,7 +974,7 @@ export default function Deploy() {
                     ? deployPhase === "preflight"
                       ? mode === "factory" ? "正在校验 Factory 与发币参数…" : "正在校验部署参数…"
                       : deployPhase === "fee"
-                        ? "正在销毁 20,000 KIMI…"
+                        ? "正在扣除 20,000 官方 KIMI…"
                         : mode === "factory" ? "正在通过 Factory 创建代币…" : "正在部署合约…"
                     : !deploymentReady
                       ? mode === "factory" ? "请先完善发币参数" : "请先完成部署参数"
@@ -1078,7 +1079,7 @@ export default function Deploy() {
                 <li>填写名称、符号、整数总量及可选税率</li>
                 <li>连接 BSC 钱包并读取 KIMI 发币工厂实时创建费</li>
                 <li>校验运行时代码、参数、静态调用和 Gas</li>
-                <li>先销毁 20,000 KIMI，再确认 createToken 交易</li>
+                <li>先把 20,000 官方 KIMI 转入销毁地址，再确认 createToken 交易</li>
                 <li>新代币会自动保存到「已发代币」</li>
               </ol>
             ) : (
@@ -1086,7 +1087,7 @@ export default function Deploy() {
                 <li>导入编译 Artifact，或填写 creation Bytecode + ABI</li>
                 <li>选择目标网络并连接钱包</li>
                 <li>系统先预检参数与 Gas</li>
-                <li>BSC 部署先销毁 20,000 KIMI，再请求钱包部署</li>
+                <li>BSC 部署先把 20,000 官方 KIMI 转入销毁地址，再请求钱包部署</li>
                 <li>成功后可在「已发代币」查看</li>
               </ol>
             )}

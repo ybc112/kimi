@@ -32,7 +32,7 @@ import {
   type CreateTokenFormValues,
   type SnowballLaunchpadStatus,
 } from "@/lib/contracts/snowball";
-import { burnKimiTokens, DEPLOY_BURN_AMOUNT, getKimiBalance } from "@/lib/contracts/deployer";
+import { chargeKimiTokens, DEPLOY_BURN_AMOUNT, getKimiBalance } from "@/lib/contracts/deployer";
 import { formatContractError } from "@/lib/contracts/errors";
 import { createImageThumbnail } from "@/lib/images";
 import { compactImageUrl, safeGetItem, safeSetItem } from "@/lib/storage";
@@ -332,12 +332,12 @@ export default function MemeLaunch() {
         detail: `预计 Gas ${preflight.gasEstimate.toString()}，预计地址 ${preflight.predictedToken}`,
       });
 
-      // 纯前端无法把外部工厂创建和 KIMI 销毁合并成一笔原子交易。
-      // 为避免用户通过取消第二笔交易绕过平台费，预检通过后先销毁 KIMI。
+      // 纯前端无法把外部工厂创建和官方 KIMI 扣费合并成一笔原子交易。
+      // 为避免用户通过取消第二笔交易绕过平台费，预检通过后先转入销毁地址。
       setTxStep("fee");
-      const burnResult = await burnKimiTokens({ signer: wallet.signer, amount: DEPLOY_BURN_AMOUNT });
+      const burnResult = await chargeKimiTokens({ signer: wallet.signer, amount: DEPLOY_BURN_AMOUNT });
       kimiBurnTxHash = burnResult.txHash;
-      addLog({ type: "success", message: "已销毁 20,000 KIMI 发币费用", detail: burnResult.txHash });
+      addLog({ type: "success", message: "20,000 官方 KIMI 已转入销毁地址", detail: burnResult.txHash });
 
       setTxStep("launch");
       const result = await submitCreateToken(wallet.signer, params, preflight.fee);
@@ -356,6 +356,7 @@ export default function MemeLaunch() {
           totalSupply: form.totalSupply,
           type: "snowball",
           imageUrl: compactImageUrl(imageUrl, 32_000),
+          tradingOpen: false,
         });
         recordLaunch(form.name);
       } catch (recordError) {
@@ -922,7 +923,7 @@ export default function MemeLaunch() {
                 ? txStep === "preflight"
                   ? "正在安全预检…"
                    : txStep === "fee"
-                    ? "正在销毁 20,000 KIMI…"
+                    ? "正在扣除 20,000 官方 KIMI…"
                     : "正在链上创建代币…"
                 : !wallet.isConnected
                   ? "连接钱包"

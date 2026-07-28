@@ -1,4 +1,7 @@
 import { ethers } from "ethers";
+import { KIMI_BURN_ADDRESS, KIMI_TOKEN_ADDRESS } from "./kimiToken";
+
+export { KIMI_BURN_ADDRESS, KIMI_TOKEN_ADDRESS } from "./kimiToken";
 
 const configuredDeployFactory = import.meta.env.VITE_DEPLOY_FACTORY_ADDRESS?.trim();
 
@@ -12,9 +15,6 @@ export const DEPLOY_FACTORY_ADDRESS: string =
     : ethers.ZeroAddress;
 
 export const IS_DEPLOY_FACTORY_CONFIGURED = DEPLOY_FACTORY_ADDRESS !== ethers.ZeroAddress;
-
-// KIMI 代币合约地址（BSC mainnet）
-export const KIMI_TOKEN_ADDRESS = "0x7A4b49cCAaDF69C4FCfd2223F8E3e30dAAb9F123";
 
 // 部署费：20,000 KIMI，18 位小数
 export const DEPLOY_BURN_AMOUNT = 20_000n * 10n ** 18n;
@@ -261,7 +261,7 @@ export function getExplorerUrl(network: string, path: string) {
 }
 
 const KIMI_ABI = [
-  "function burn(uint256 amount) external",
+  "function transfer(address to, uint256 amount) external returns (bool)",
   "function balanceOf(address account) external view returns (uint256)",
   "function decimals() external view returns (uint8)",
 ];
@@ -276,12 +276,25 @@ export async function getKimiBalance(signer: ethers.Signer, account?: string): P
   return (await contract.balanceOf(owner)) as bigint;
 }
 
-export async function burnKimiTokens(params: { signer: ethers.Signer; amount?: bigint }) {
+export async function chargeKimiTokens(params: { signer: ethers.Signer; amount?: bigint }) {
   const amount = params.amount ?? DEPLOY_BURN_AMOUNT;
+  if (amount <= 0n) throw new Error("KIMI 扣费数量必须大于 0");
+  const provider = params.signer.provider;
+  if (!provider) throw new Error("钱包 Provider 不可用");
+  const network = await provider.getNetwork();
+  if (Number(network.chainId) !== BSC_CHAIN_ID) {
+    throw new Error("官方 KIMI 仅在 BNB Smart Chain 上扣费，请先切换到 BSC");
+  }
   const balance = await getKimiBalance(params.signer);
-  if (balance < amount) throw new Error("KIMI 余额不足，需要至少 20,000 KIMI");
+  if (balance < amount) {
+    throw new Error(`官方 KIMI 余额不足，需要至少 20,000 KIMI（${KIMI_TOKEN_ADDRESS}）`);
+  }
   const contract = new ethers.Contract(KIMI_TOKEN_ADDRESS, KIMI_ABI, params.signer);
-  const tx = await contract.burn(amount);
+  const canTransfer = (await contract.transfer.staticCall(KIMI_BURN_ADDRESS, amount)) as boolean;
+  if (!canTransfer) throw new Error("官方 KIMI 合约拒绝扣费转账");
+  await contract.transfer.estimateGas(KIMI_BURN_ADDRESS, amount);
+  const tx = await contract.transfer(KIMI_BURN_ADDRESS, amount);
   const receipt = await tx.wait();
+  if (!receipt || receipt.status !== 1) throw new Error("KIMI 扣费交易未成功确认");
   return { txHash: tx.hash, receipt };
 }

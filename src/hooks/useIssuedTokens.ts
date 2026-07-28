@@ -17,6 +17,10 @@ export interface CreateTokenInput {
   totalSupply?: string;
   type: TokenType;
   imageUrl?: string;
+  tradingOpen?: boolean;
+  pairAddress?: string;
+  liquidityTxHash?: string;
+  openTradingTxHash?: string;
 }
 
 /**

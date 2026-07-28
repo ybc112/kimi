@@ -23,8 +23,12 @@ const definitions = [
   },
 ];
 
+function readSoliditySource(filePath) {
+  return fs.readFileSync(filePath, "utf8").replace(/\r\n?/g, "\n");
+}
+
 const sources = Object.fromEntries(
-  definitions.map(({ entry }) => [entry, { content: fs.readFileSync(path.join(projectRoot, entry), "utf8") }])
+  definitions.map(({ entry }) => [entry, { content: readSoliditySource(path.join(projectRoot, entry)) }])
 );
 const input = {
   language: "Solidity",
@@ -45,7 +49,7 @@ function findImports(importPath) {
   ];
   const resolved = candidates.find((candidate) => fs.existsSync(candidate));
   return resolved
-    ? { contents: fs.readFileSync(resolved, "utf8") }
+    ? { contents: readSoliditySource(resolved) }
     : { error: `Import not found: ${importPath}` };
 }
 

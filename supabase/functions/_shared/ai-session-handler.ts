@@ -12,7 +12,7 @@ import {
   buildWalletAccessMessage,
 } from "./ai-security.ts";
 
-const KIMI_TOKEN_ADDRESS = "0x7A4b49cCAaDF69C4FCfd2223F8E3e30dAAb9F123";
+const KIMI_TOKEN_ADDRESS = "0x9Aa9CADEc931C58c2a22Bbc5381b266d12887777";
 const BSC_RPC_URL = Deno.env.get("BSC_RPC_URL") || "https://bsc-rpc.publicnode.com";
 const SESSION_TTL_SECONDS = readPositiveInt("AI_SESSION_TTL_SECONDS", 600, 1_800);
 

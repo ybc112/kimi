@@ -5,7 +5,7 @@
 - [KIMI.sol](./KIMI.sol) — ERC20 代币，带 `burn` 和 `mint` 功能
 - 精度：18
 - 初始供应量：默认 1,000,000,000 KIMI
-- 销毁：调用 `burn(uint256)` 或 `transfer` 到销毁地址
+- 销毁：当前官方 KIMI 不提供 `burn(uint256)`，必须调用 `transfer` 转到销毁地址
 
 本次要部署的代币：
 - 名称：`kimi666`
