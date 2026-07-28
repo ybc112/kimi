@@ -5,6 +5,23 @@ import { compactImageUrl, safeGetItem, safeSetItem } from "@/lib/storage";
 const ISSUED_TOKENS_KEY = "kimi-issued-tokens";
 const MAX_PERSISTED_TOKENS = 30;
 
+// 平台展示代币：KIMI AI (KIMIAI)
+const DEFAULT_PLATFORM_TOKEN: IssuedToken = {
+  id: "platform-kimiai",
+  name: "KIMI AI",
+  symbol: "KIMIAI",
+  address: "0x78a4acbb4760a66ebb294c9c3032efe854667777",
+  deployer: "0x0000000000000000000000000000000000000000",
+  network: "BNB Smart Chain",
+  chainId: 56,
+  txHash: "",
+  status: "success",
+  totalSupply: "1000000000",
+  type: "custom",
+  createdAt: Date.now(),
+  tradingOpen: false,
+};
+
 export interface CreateTokenInput {
   name: string;
   symbol: string;
@@ -55,7 +72,7 @@ export function useIssuedTokens() {
   };
 
   const clearTokens = () => {
-    setTokens([]);
+    setTokens([DEFAULT_PLATFORM_TOKEN]);
   };
 
   const refresh = async () => {
@@ -73,7 +90,7 @@ function readTokens(): IssuedToken[] {
     const raw = safeGetItem(ISSUED_TOKENS_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as IssuedToken[];
-      return Array.isArray(parsed) ? parsed.map((t) => ({
+      const stored = Array.isArray(parsed) ? parsed.map((t) => ({
         ...t,
         type: t.type ?? "custom",
         deployer: t.deployer ?? "",
@@ -81,11 +98,20 @@ function readTokens(): IssuedToken[] {
         txHash: t.txHash ?? "",
         createdAt: t.createdAt ?? Date.now(),
       })) : [];
+      return ensurePlatformToken(stored);
     }
   } catch {
     // 忽略损坏的本地缓存并回退到空列表。
   }
-  return [];
+  return [DEFAULT_PLATFORM_TOKEN];
+}
+
+function ensurePlatformToken(tokens: IssuedToken[]): IssuedToken[] {
+  const exists = tokens.some(
+    (t) => t.address.toLowerCase() === DEFAULT_PLATFORM_TOKEN.address.toLowerCase()
+  );
+  if (exists) return tokens;
+  return [DEFAULT_PLATFORM_TOKEN, ...tokens];
 }
 
 function persistTokens(tokens: IssuedToken[]) {
