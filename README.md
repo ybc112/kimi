@@ -10,6 +10,9 @@ Kimi Flap Vault 是一个面向 BNB Smart Chain 的合约生成、Meme 发币、
 - KIMI 平台费改为代币/合约创建成功后再销毁，避免“费用已扣但创建失败”。
 - “工厂部署”已改为专用 Snowball 发币流程，直接调用 `SnowballLaunchpad.createToken`，不再错误调用 `deploy(bytes,bytes)`。
 - 页面会核对 Factory 主网运行时代码哈希；不匹配 `SnowballLaunchpad.sol` 时会阻止交易。
+- 发币成功后的本地记录使用有上限的安全缓存；AI 图片会压缩为缩略图，浏览器存储满额时也不会把链上成功误报为失败。
+- Render 静态部署会为所有 React 路由生成真实入口文件，直接刷新 `/meme-launch`、`/deploy` 等页面不再返回 404。
+- 品牌 Logo 已替换为透明 SVG，移动端不再出现 JPG 白色边框。
 - 合约部署要求真实 creation Bytecode + ABI，可直接导入 Hardhat/Foundry Artifact JSON。
 - 合约部署内置“固定总量”和“可增发 / 可销毁”两个已编译 ERC-20 模板，并实时显示 3 项部署就绪检查。
 - 钱包支持 BSC、Ethereum、Arbitrum 与 Base 的正确网络切换。

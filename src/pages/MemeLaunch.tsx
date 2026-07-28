@@ -34,6 +34,8 @@ import {
 } from "@/lib/contracts/snowball";
 import { burnKimiTokens, DEPLOY_BURN_AMOUNT, getKimiBalance } from "@/lib/contracts/deployer";
 import { formatContractError } from "@/lib/contracts/errors";
+import { createImageThumbnail } from "@/lib/images";
+import { compactImageUrl, safeGetItem, safeSetItem } from "@/lib/storage";
 
 const DEFAULT_FORM: CreateTokenFormValues = {
   name: "",
@@ -107,7 +109,7 @@ interface SavedMeme {
 
 function readSavedMeme(): SavedMeme | null {
   try {
-    const raw = localStorage.getItem(MEME_STORAGE_KEY);
+    const raw = safeGetItem(MEME_STORAGE_KEY);
     if (raw) return JSON.parse(raw);
   } catch {
     // 忽略损坏的旧版浏览器缓存。
@@ -116,7 +118,8 @@ function readSavedMeme(): SavedMeme | null {
 }
 
 function saveMeme(meme: SavedMeme) {
-  localStorage.setItem(MEME_STORAGE_KEY, JSON.stringify(meme));
+  const imageUrl = compactImageUrl(meme.imageUrl) ?? "";
+  safeSetItem(MEME_STORAGE_KEY, JSON.stringify({ ...meme, imageUrl }));
 }
 
 export default function MemeLaunch() {
@@ -142,6 +145,7 @@ export default function MemeLaunch() {
   const [feeWarningDetails, setFeeWarningDetails] = useState<string>("");
   const [txStep, setTxStep] = useState<"idle" | "preflight" | "launch" | "fee">("idle");
   const [imageError, setImageError] = useState<string>("");
+  const [imageFailed, setImageFailed] = useState(false);
   const [copied, setCopied] = useState(false);
   const [launchpadStatus, setLaunchpadStatus] = useState<SnowballLaunchpadStatus | null>(null);
   const [preflightFee, setPreflightFee] = useState<bigint | null>(null);
@@ -177,6 +181,7 @@ export default function MemeLaunch() {
       setGeneratedDescription(saved.description);
       setAvatar(saved.avatar);
       setImageUrl(saved.imageUrl || "");
+      setImageFailed(false);
     }
     let active = true;
     fetchSnowballLaunchpadStatus()
@@ -211,10 +216,18 @@ export default function MemeLaunch() {
 
     try {
       const prompt = `A cute iconic meme crypto token mascot for "${form.name}", cartoon style, vibrant colors, clean background, token logo.`;
-      const url = await generateImage({ prompt, size: "1024x1024" });
+      const sourceUrl = await generateImage({ prompt, size: "1024x1024" });
+      let url = sourceUrl;
+      try {
+        url = await createImageThumbnail(sourceUrl);
+      } catch {
+        // 远程图片可能不允许 canvas 跨域读取；继续用原图展示，但不会
+        // 把超大的 data URL 强行写入 localStorage。
+      }
       setImageUrl(url);
+      setImageFailed(false);
       saveMeme({ concept, form, description: generatedDescription, avatar, imageUrl: url });
-      addLog({ type: "success", message: "Meme 头像生成成功", detail: url });
+      addLog({ type: "success", message: "Meme 头像生成成功" });
       showToast({ type: "success", message: "头像生成成功" });
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
@@ -325,20 +338,28 @@ export default function MemeLaunch() {
       const result = await submitCreateToken(wallet.signer, params, preflight.fee);
       setTxHash(result.txHash);
       setTokenAddress(result.tokenAddress);
-      addToken({
-        name: form.name,
-        symbol: form.symbol,
-        address: result.tokenAddress,
-        deployer: wallet.account,
-        network: "BNB Smart Chain",
-        chainId: 56,
-        txHash: result.txHash,
-        status: "success",
-        totalSupply: form.totalSupply,
-        type: "meme",
-        imageUrl,
-      });
-      recordLaunch(form.name);
+      try {
+        addToken({
+          name: form.name,
+          symbol: form.symbol,
+          address: result.tokenAddress,
+          deployer: wallet.account,
+          network: "BNB Smart Chain",
+          chainId: 56,
+          txHash: result.txHash,
+          status: "success",
+          totalSupply: form.totalSupply,
+          type: "snowball",
+          imageUrl: compactImageUrl(imageUrl, 32_000),
+        });
+        recordLaunch(form.name);
+      } catch (recordError) {
+        addLog({
+          type: "error",
+          message: "代币已创建，但本地记录保存失败",
+          detail: recordError instanceof Error ? recordError.message : String(recordError),
+        });
+      }
 
       // 先确保代币创建成功，再支付 KIMI，避免“费用已销毁但发币失败”。
       setTxStep("fee");
@@ -354,8 +375,8 @@ export default function MemeLaunch() {
 
       setTxStatus("success");
       setTxStep("idle");
-      addLog({ type: "success", message: "代币创建成功", detail: result.tokenAddress });
-      showToast({ type: "success", message: "代币发射成功" });
+      addLog({ type: "success", message: "Snowball 普通代币创建成功", detail: result.tokenAddress });
+      showToast({ type: "success", message: "Snowball 代币发射成功" });
     } catch (error) {
       const friendly = formatContractError(error, "代币发射失败");
       setErrorMessage(friendly.summary);
@@ -412,8 +433,8 @@ export default function MemeLaunch() {
     <div className="flex min-h-[calc(100vh-7rem)] flex-col gap-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="kimi-page-title">Meme 一键发射</h2>
-          <p className="kimi-page-subtitle">Meme Launch · 输入概念生成文案，连接钱包即可在 BSC 上发射代币</p>
+          <h2 className="kimi-page-title">Snowball 普通代币一键发射</h2>
+          <p className="kimi-page-subtitle">Snowball Launch · 使用普通 SnowballToken 合约，输入 Meme 概念后即可在 BSC 发币</p>
         </div>
         <div className="flex items-center gap-2">
           {wallet.isConnected ? (
@@ -521,12 +542,17 @@ export default function MemeLaunch() {
                 </div>
             </div>
             <div className="relative flex aspect-[4/3] flex-col items-center justify-center overflow-hidden rounded-xl border border-dashed border-[#303236] bg-[#0A0B0D] p-4 text-center sm:aspect-square">
-              {imageUrl ? (
+              {imageUrl && !imageFailed ? (
                 <img
                   src={imageUrl}
                   alt={form.symbol}
                   className="absolute inset-0 h-full w-full object-cover"
                   loading="lazy"
+                  onError={() => {
+                    setImageFailed(true);
+                    setImageError("头像链接已失效，已切换为默认头像");
+                    saveMeme({ concept, form, description: generatedDescription, avatar, imageUrl: "" });
+                  }}
                 />
               ) : (
                 <>
@@ -549,6 +575,7 @@ export default function MemeLaunch() {
               value={imageUrl}
               onChange={(e) => {
                 setImageUrl(e.target.value);
+                setImageFailed(false);
                 setImageError("");
                 saveMeme({ concept, form, description: generatedDescription, avatar, imageUrl: e.target.value });
               }}
@@ -790,7 +817,7 @@ export default function MemeLaunch() {
                   <div className="space-y-3">
                     <div className="flex items-center gap-2 text-sm font-semibold text-[#D0FF00]">
                       <CheckCircle className="h-4 w-4" />
-                      <span>代币发射成功</span>
+                      <span>Snowball 代币发射成功</span>
                     </div>
                     {tokenAddress && (
                       <div className="rounded-xl border border-[#25282C] bg-[#0A0B0D] p-3">

@@ -61,6 +61,15 @@ export default function IssuedTokens() {
   const [statusFilter, setStatusFilter] = useState<TokenStatus | "all">("all");
   const [typeFilter, setTypeFilter] = useState<TokenType | "all">("all");
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [failedImageIds, setFailedImageIds] = useState<Set<string>>(() => new Set());
+
+  const markImageFailed = (id: string) => {
+    setFailedImageIds((current) => {
+      const next = new Set(current);
+      next.add(id);
+      return next;
+    });
+  };
 
   const filtered = useMemo(() => {
     return tokens.filter((t) => {
@@ -160,9 +169,15 @@ export default function IssuedTokens() {
             <article key={token.id} className="rounded-2xl border border-[#25282C] bg-[#111215] p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-3">
-                  <div className={cn("flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[#25282C] bg-[#0A0B0D]", !token.imageUrl && tcfg.color)}>
-                    {token.imageUrl ? (
-                      <img src={token.imageUrl} alt={token.symbol} className="h-full w-full object-cover" loading="lazy" />
+                  <div className={cn("flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[#25282C] bg-[#0A0B0D]", (!token.imageUrl || failedImageIds.has(token.id)) && tcfg.color)}>
+                    {token.imageUrl && !failedImageIds.has(token.id) ? (
+                      <img
+                        src={token.imageUrl}
+                        alt={token.symbol}
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                        onError={() => markImageFailed(token.id)}
+                      />
                     ) : (
                       <TypeIcon className="h-4 w-4" />
                     )}
@@ -254,15 +269,16 @@ export default function IssuedTokens() {
                         <div
                           className={cn(
                             "flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-[#25282C] bg-[#0A0B0D]",
-                            !token.imageUrl && tcfg.color
+                            (!token.imageUrl || failedImageIds.has(token.id)) && tcfg.color
                           )}
                         >
-                          {token.imageUrl ? (
+                          {token.imageUrl && !failedImageIds.has(token.id) ? (
                             <img
                               src={token.imageUrl}
                               alt={token.symbol}
                               className="h-full w-full object-cover"
                               loading="lazy"
+                              onError={() => markImageFailed(token.id)}
                             />
                           ) : (
                             <TypeIcon className="h-4 w-4" />

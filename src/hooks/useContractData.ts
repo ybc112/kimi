@@ -1,5 +1,6 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import type { TodayStats, ActivityItem, TrendingItem } from "@/types";
+import { safeGetItem, safeSetItem } from "@/lib/storage";
 
 const STATS_KEY = "kimi-today-stats";
 const ACTIVITIES_KEY = "kimi-activities";
@@ -16,15 +17,15 @@ export function useContractData() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    localStorage.setItem(STATS_KEY, JSON.stringify(stats));
+    safeSetItem(STATS_KEY, JSON.stringify(stats));
   }, [stats]);
 
   useEffect(() => {
-    localStorage.setItem(ACTIVITIES_KEY, JSON.stringify(activities.slice(0, 50)));
+    safeSetItem(ACTIVITIES_KEY, JSON.stringify(activities.slice(0, 50)));
   }, [activities]);
 
   useEffect(() => {
-    localStorage.setItem(TRENDING_KEY, JSON.stringify(trending));
+    safeSetItem(TRENDING_KEY, JSON.stringify(trending));
   }, [trending]);
 
   /** 触发一次模拟刷新，后续替换为真实 API / 合约事件 */
@@ -70,7 +71,7 @@ export function useContractData() {
 
 function readStats(): TodayStats {
   try {
-    const raw = localStorage.getItem(STATS_KEY);
+    const raw = safeGetItem(STATS_KEY);
     if (raw) return JSON.parse(raw);
   } catch {
     // 忽略损坏的本地缓存并回退到默认值。
@@ -80,7 +81,7 @@ function readStats(): TodayStats {
 
 function readActivities(): ActivityItem[] {
   try {
-    const raw = localStorage.getItem(ACTIVITIES_KEY);
+    const raw = safeGetItem(ACTIVITIES_KEY);
     if (raw) return JSON.parse(raw);
   } catch {
     // 忽略损坏的本地缓存并回退到默认值。
@@ -90,7 +91,7 @@ function readActivities(): ActivityItem[] {
 
 function readTrending(): TrendingItem[] {
   try {
-    const raw = localStorage.getItem(TRENDING_KEY);
+    const raw = safeGetItem(TRENDING_KEY);
     if (raw) return JSON.parse(raw);
   } catch {
     // 忽略损坏的本地缓存并回退到默认值。

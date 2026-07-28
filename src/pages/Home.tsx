@@ -67,8 +67,8 @@ const features = [
     color: "#FF6B6B",
   },
   {
-    title: "Meme 发射",
-    description: "输入 Meme 概念自动生成代币名称与符号，连接钱包在 BSC 上发射。",
+    title: "Snowball 发币",
+    description: "使用普通 SnowballToken 合约，输入 Meme 概念后连接钱包即可在 BSC 发射。",
     icon: Zap,
     to: "/meme-launch",
     color: "#A78BFA",

@@ -17,6 +17,7 @@ import { DEFAULT_MODEL, sendChatMessage } from "@/lib/kimi";
 import { useAppStore } from "@/store";
 import { useContractData } from "@/hooks/useContractData";
 import { cn } from "@/lib/utils";
+import { safeGetItem, safeSetItem } from "@/lib/storage";
 
 type Device = "desktop" | "tablet" | "mobile";
 
@@ -70,7 +71,7 @@ export default function PageBuilder() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    const saved = localStorage.getItem("page-builder-code");
+    const saved = safeGetItem("page-builder-code");
     if (saved) setGeneratedCode(saved);
   }, []);
 
@@ -107,7 +108,7 @@ export default function PageBuilder() {
 
       const code = cleanCode(content);
       setGeneratedCode(code);
-      localStorage.setItem("page-builder-code", code);
+      safeSetItem("page-builder-code", code);
       setPreviewKey((k) => k + 1);
       recordPage();
       addLog({ type: "success", message: "AI 页面生成成功" });
@@ -287,7 +288,7 @@ export default function PageBuilder() {
               value={generatedCode}
               onChange={(e) => {
                 setGeneratedCode(e.target.value);
-                localStorage.setItem("page-builder-code", e.target.value);
+                safeSetItem("page-builder-code", e.target.value);
               }}
               placeholder="生成的 HTML 代码会显示在这里，你也可以直接编辑…"
               className="flex-1 resize-none bg-[#0A0B0D] p-4 font-mono text-xs leading-6 text-[#E8E8E8] outline-none placeholder:text-[#6B7280] sm:pl-4"

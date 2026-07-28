@@ -29,6 +29,7 @@ import {
 import { burnKimiTokens, DEPLOY_BURN_AMOUNT, getKimiBalance } from "@/lib/contracts/deployer";
 import { formatContractError } from "@/lib/contracts/errors";
 import { TransactionError } from "@/components/TransactionError";
+import { safeGetItem, safeSetItem } from "@/lib/storage";
 
 const CHECKLIST_STORAGE_KEY = "kimi-flap-launch-checklist";
 
@@ -131,7 +132,7 @@ function buildInternalLaunchParams(form: InternalLaunchForm, receiver: string) {
 
 function readChecklist(): Record<string, boolean> {
   try {
-    const raw = localStorage.getItem(CHECKLIST_STORAGE_KEY);
+    const raw = safeGetItem(CHECKLIST_STORAGE_KEY);
     if (raw) return JSON.parse(raw);
   } catch {
     // 忽略损坏的旧版浏览器缓存。
@@ -140,7 +141,7 @@ function readChecklist(): Record<string, boolean> {
 }
 
 function saveChecklist(state: Record<string, boolean>) {
-  localStorage.setItem(CHECKLIST_STORAGE_KEY, JSON.stringify(state));
+  safeSetItem(CHECKLIST_STORAGE_KEY, JSON.stringify(state));
 }
 
 export default function FlapLaunch() {
@@ -222,19 +223,27 @@ export default function FlapLaunch() {
       const launch = await submitCreateToken(wallet.signer, params, preflight.fee);
       setResult({ address: launch.tokenAddress, txHash: launch.txHash });
 
-      addToken({
-        name: form.name,
-        symbol: form.symbol,
-        address: launch.tokenAddress,
-        deployer: wallet.account,
-        network: "BNB Smart Chain",
-        chainId: 56,
-        txHash: launch.txHash,
-        status: "success",
-        totalSupply: form.supply,
-        type: "flap",
-      });
-      recordLaunch(form.name);
+      try {
+        addToken({
+          name: form.name,
+          symbol: form.symbol,
+          address: launch.tokenAddress,
+          deployer: wallet.account,
+          network: "BNB Smart Chain",
+          chainId: 56,
+          txHash: launch.txHash,
+          status: "success",
+          totalSupply: form.supply,
+          type: "flap",
+        });
+        recordLaunch(form.name);
+      } catch (recordError) {
+        addLog({
+          type: "error",
+          message: "代币已创建，但本地记录保存失败",
+          detail: recordError instanceof Error ? recordError.message : String(recordError),
+        });
+      }
 
       setLaunchStep("fee");
       try {

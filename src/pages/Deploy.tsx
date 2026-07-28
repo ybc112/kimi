@@ -55,6 +55,7 @@ import { useContractData } from "@/hooks/useContractData";
 import { formatContractError } from "@/lib/contracts/errors";
 import { TransactionError } from "@/components/TransactionError";
 import { SnowballFactoryForm } from "@/components/SnowballFactoryForm";
+import { safeGetItem } from "@/lib/storage";
 
 const networks = [
   { value: "bsc", label: "BNB Smart Chain", icon: "🔶", chainId: 56 },
@@ -139,7 +140,7 @@ export default function Deploy() {
   });
 
   useEffect(() => {
-    const saved = localStorage.getItem("flap-generated-code");
+    const saved = safeGetItem("flap-generated-code");
     if (saved) setCode(saved);
   }, []);
 
@@ -283,7 +284,7 @@ export default function Deploy() {
   };
 
   const handleLoadLocal = () => {
-    const saved = localStorage.getItem("flap-generated-code");
+    const saved = safeGetItem("flap-generated-code");
     if (saved) {
       setCode(saved);
       showToast({ type: "success", message: "已从本地加载代码" });
@@ -439,20 +440,28 @@ export default function Deploy() {
       setContractAddress(result.address);
       setTxHash(result.deployTxHash);
 
-      addToken({
-        name: deployedName,
-        symbol: deployedSymbol,
-        address: result.address,
-        deployer: account,
-        network: networkLabel,
-        chainId: expectedChainId || 56,
-        txHash: result.deployTxHash,
-        status: "success",
-        totalSupply: deployedSupply,
-        type: deployedType,
-      });
-      if (mode === "factory") recordLaunch(deployedName);
-      else recordDeploy(deployedName);
+      try {
+        addToken({
+          name: deployedName,
+          symbol: deployedSymbol,
+          address: result.address,
+          deployer: account,
+          network: networkLabel,
+          chainId: expectedChainId || 56,
+          txHash: result.deployTxHash,
+          status: "success",
+          totalSupply: deployedSupply,
+          type: deployedType,
+        });
+        if (mode === "factory") recordLaunch(deployedName);
+        else recordDeploy(deployedName);
+      } catch (recordError) {
+        addLog({
+          type: "error",
+          message: `${mode === "factory" ? "代币已经创建" : "合约已经部署"}，但本地记录保存失败`,
+          detail: recordError instanceof Error ? recordError.message : String(recordError),
+        });
+      }
 
       addLog({
         type: "success",

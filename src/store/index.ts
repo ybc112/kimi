@@ -1,6 +1,7 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
 import type { ChatSession, LogEntry, IssuedToken, ToastState } from "@/types";
+import { resilientStorage } from "@/lib/storage";
 
 interface AppState {
   sessions: ChatSession[];
@@ -118,6 +119,22 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: STORAGE_KEY,
+      storage: createJSONStorage(() => resilientStorage),
+      // Keep the durable cache bounded. Full AI responses can be large enough
+      // to exhaust localStorage, while the in-memory state remains complete.
+      partialize: (state) => ({
+        sessions: state.sessions.slice(0, 20).map((session) => ({
+          ...session,
+          messages: session.messages.slice(-40).map((message) => ({
+            ...message,
+            content: message.content.length > 80_000
+              ? `${message.content.slice(0, 80_000)}\n…[本地缓存已截断]`
+              : message.content,
+          })),
+        })),
+        currentSessionId: state.currentSessionId,
+        logs: state.logs.slice(0, 100),
+      }),
     }
   )
 );

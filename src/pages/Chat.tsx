@@ -30,6 +30,7 @@ import { DEFAULT_MODEL, sendChatMessage } from "@/lib/kimi";
 import { FLAP_SYSTEM_PROMPT } from "@/lib/flapContext";
 import { SyntaxHighlighter, vscDarkPlus } from "@/lib/syntaxHighlighter";
 import { cn } from "@/lib/utils";
+import { safeRemoveItem, safeSetItem } from "@/lib/storage";
 
 const vaultTypes = [
   { value: "mint-treasury", label: "Mint Treasury", mode: "Mint", icon: Box },
@@ -194,7 +195,7 @@ export default function Chat() {
 
       const code = extractCode(content);
       setGeneratedCode(code);
-      localStorage.setItem("flap-generated-code", code);
+      safeSetItem("flap-generated-code", code);
       recordGenerate();
 
       if (!currentSessionId) {
@@ -254,7 +255,7 @@ export default function Chat() {
 
   const handleSaveLocal = () => {
     if (!generatedCode) return;
-    localStorage.setItem("flap-generated-code", generatedCode);
+    safeSetItem("flap-generated-code", generatedCode);
     showToast({ type: "success", message: "已保存到本地" });
   };
 
@@ -279,7 +280,7 @@ export default function Chat() {
     });
     setPrompt("");
     setGeneratedCode("");
-    localStorage.removeItem("flap-generated-code");
+    safeRemoveItem("flap-generated-code");
     setParams({
       projectName: "",
       contractName: "",
