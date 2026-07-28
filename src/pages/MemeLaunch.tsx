@@ -14,7 +14,6 @@ import {
   Settings2,
   ChevronDown,
 } from "lucide-react";
-import { ethers } from "ethers";
 import { useAppStore } from "@/store";
 import { useWallet } from "@/hooks/useWallet";
 import { useIssuedTokens } from "@/hooks/useIssuedTokens";
@@ -24,13 +23,14 @@ import { cn } from "@/lib/utils";
 import { TransactionError } from "@/components/TransactionError";
 import {
   SNOWBALL_LAUNCHPAD_ADDRESS,
-  CREATE_FEE_WEI,
   BSC_USDT_ADDRESS,
   buildCreateTokenParams,
-  fetchCreateFee,
+  fetchSnowballLaunchpadStatus,
+  formatCreateFee,
   preflightCreateToken,
   submitCreateToken,
   type CreateTokenFormValues,
+  type SnowballLaunchpadStatus,
 } from "@/lib/contracts/snowball";
 import { burnKimiTokens, DEPLOY_BURN_AMOUNT, getKimiBalance } from "@/lib/contracts/deployer";
 import { formatContractError } from "@/lib/contracts/errors";
@@ -143,7 +143,10 @@ export default function MemeLaunch() {
   const [txStep, setTxStep] = useState<"idle" | "preflight" | "launch" | "fee">("idle");
   const [imageError, setImageError] = useState<string>("");
   const [copied, setCopied] = useState(false);
-  const [createFee, setCreateFee] = useState<string>(CREATE_FEE_WEI);
+  const [launchpadStatus, setLaunchpadStatus] = useState<SnowballLaunchpadStatus | null>(null);
+  const [preflightFee, setPreflightFee] = useState<bigint | null>(null);
+  const [feeReadState, setFeeReadState] = useState<"loading" | "ready" | "error">("loading");
+  const [feeReadError, setFeeReadError] = useState("");
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   useEffect(() => {
@@ -175,7 +178,21 @@ export default function MemeLaunch() {
       setAvatar(saved.avatar);
       setImageUrl(saved.imageUrl || "");
     }
-    fetchCreateFee().then(setCreateFee).catch(() => setCreateFee(CREATE_FEE_WEI));
+    let active = true;
+    fetchSnowballLaunchpadStatus()
+      .then((status) => {
+        if (!active) return;
+        setLaunchpadStatus(status);
+        setFeeReadState("ready");
+      })
+      .catch((error) => {
+        if (!active) return;
+        setFeeReadState("error");
+        setFeeReadError(error instanceof Error ? error.message : String(error));
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   const updateForm = (key: keyof CreateTokenFormValues, value: string | boolean) => {
@@ -295,7 +312,9 @@ export default function MemeLaunch() {
         throw new Error("KIMI 余额不足，需要至少 20,000 KIMI");
       }
       const preflight = await preflightCreateToken(wallet.signer, params);
-      setCreateFee(preflight.fee.toString());
+      setPreflightFee(preflight.fee);
+      setFeeReadState("ready");
+      setFeeReadError("");
       addLog({
         type: "success",
         message: "发币预检通过",
@@ -383,13 +402,11 @@ export default function MemeLaunch() {
     }
   }, [form, wallet.account]);
   const canLaunch = !formValidationMessage && isBuyTaxValid && isSellTaxValid;
-  const createFeeBNB = useMemo(() => {
-    try {
-      return Number(ethers.formatEther(createFee)).toFixed(4);
-    } catch {
-      return "0.0050";
-    }
-  }, [createFee]);
+  const displayedCreateFee = preflightFee ?? launchpadStatus?.createFee ?? null;
+  const createFeeDisplay = useMemo(
+    () => (displayedCreateFee === null ? null : formatCreateFee(displayedCreateFee)),
+    [displayedCreateFee]
+  );
 
   return (
     <div className="flex min-h-[calc(100vh-7rem)] flex-col gap-4">
@@ -821,8 +838,11 @@ export default function MemeLaunch() {
 
           <div className="border-t border-[#25282C] p-5">
             <div className="mb-4 rounded-xl border border-[#25282C] bg-[#0A0B0D] p-3">
-              <div className="mb-2 flex items-center justify-between">
-                <span className="text-xs text-[#9CA3AF]">Factory 合约</span>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <span className="flex min-w-0 items-center gap-1.5 text-xs text-[#9CA3AF]">
+                  <CheckCircle className="h-3.5 w-3.5 shrink-0 text-[#D0FF00]" />
+                  SnowballLaunchpad · 源码已核对
+                </span>
                 <a
                   href={`https://bscscan.com/address/${SNOWBALL_LAUNCHPAD_ADDRESS}`}
                   target="_blank"
@@ -835,12 +855,26 @@ export default function MemeLaunch() {
               <code className="block truncate text-xs text-[#E8E8E8]">{SNOWBALL_LAUNCHPAD_ADDRESS}</code>
               <div className="mt-2 flex items-center justify-between text-xs">
                 <span className="text-[#6B7280]">链上创建费</span>
-                <span className="font-medium text-[#D0FF00]">{createFeeBNB} BNB</span>
+                <span className={cn("font-medium", feeReadState === "error" ? "text-[#F59E0B]" : "text-[#D0FF00]")}>
+                  {feeReadState === "loading"
+                    ? "正在读取…"
+                    : createFeeDisplay?.fullLabel || "交易前实时读取"}
+                </span>
               </div>
               <div className="mt-1 flex items-center justify-between text-xs">
                 <span className="text-[#6B7280]">平台费用（创建成功后）</span>
                 <span className="font-medium text-[#D0FF00]">20,000 KIMI</span>
               </div>
+              {createFeeDisplay?.isFree && (
+                <p className="mt-2 text-[11px] leading-relaxed text-[#7DE9E7]">
+                  当前 Factory 免收创建费；外部项目源码的初始默认值是 0.005 BNB，钱包仍需保留少量 BNB 支付网络 Gas。
+                </p>
+              )}
+              {feeReadState === "error" && (
+                <p className="mt-2 text-[11px] leading-relaxed text-[#F59E0B]" title={feeReadError}>
+                  公共 RPC 暂时未读到费用，点击发射后会通过钱包 Provider 再次校验，绝不会用默认值直接付款。
+                </p>
+              )}
             </div>
             {formValidationMessage && <p className="mb-3 text-xs text-[#FF6B6B]">{formValidationMessage}</p>}
             <button
@@ -867,7 +901,7 @@ export default function MemeLaunch() {
                   ? "连接钱包"
                   : !wallet.isBSC
                     ? "切换到 BSC"
-                    : `一键发射（${createFeeBNB} BNB）`}
+                    : `一键发射（${createFeeDisplay?.buttonLabel || "交易前读取费用"}）`}
             </button>
           </div>
         </div>

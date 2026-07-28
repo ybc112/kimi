@@ -2,15 +2,20 @@ import { ethers } from "ethers";
 
 export const SNOWBALL_LAUNCHPAD_ADDRESS = "0x08b6e62c01dcE3eACFc558609427348689c7773E";
 
-export const BSC_RPC_URL = "https://bsc-dataseed.binance.org/";
+export const BSC_CHAIN_ID = 56;
+export const BSC_RPC_URL = "https://bsc-rpc.publicnode.com";
 
-/** 默认创建费用，启动时会从链上读取最新值 */
+/** 源码部署时的默认创建费。链上 owner 可随时修改，页面不能把它当作实时费用。 */
 export const DEFAULT_CREATE_FEE_WEI = "5000000000000000";
 
 /** 兼容旧名 */
 export const CREATE_FEE_WEI = DEFAULT_CREATE_FEE_WEI;
 
 export const BSC_USDT_ADDRESS = "0x55d398326f99059fF775485246999027B3197955";
+
+/** 与外部项目 Hardhat artifact 和 BSC 主网运行时代码逐字节核对后的哈希。 */
+export const SNOWBALL_LAUNCHPAD_RUNTIME_HASH =
+  "0x9adb672620bf25cc185a47d22a400f8298ef9a350923eff628e7fda5820b4fcc";
 
 export interface CreateTokenFormValues {
   name: string;
@@ -65,6 +70,24 @@ export interface CreateTokenPreflight {
   gasEstimate: bigint;
 }
 
+export interface SnowballLaunchpadStatus {
+  address: string;
+  createFee: bigint;
+  feeReceiver: string;
+  defaultRewardToken: string;
+  owner: string;
+  tokenCount: bigint;
+  runtimeHash: string;
+  runtimeVerified: boolean;
+}
+
+export interface CreateFeeDisplay {
+  amount: string;
+  fullLabel: string;
+  buttonLabel: string;
+  isFree: boolean;
+}
+
 export const LAUNCHPAD_ABI = [
   {
     inputs: [
@@ -115,6 +138,13 @@ export const LAUNCHPAD_ABI = [
   {
     inputs: [],
     name: "feeReceiver",
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [],
+    name: "owner",
     outputs: [{ name: "", type: "address" }],
     stateMutability: "view",
     type: "function",
@@ -192,6 +222,10 @@ export const LAUNCHPAD_ABI = [
     name: "DefaultRewardTokenUpdated",
     type: "event",
   },
+  { inputs: [], name: "InvalidFee", type: "error" },
+  { inputs: [], name: "InvalidInput", type: "error" },
+  { inputs: [], name: "FeeTransferFailed", type: "error" },
+  { inputs: [], name: "ZeroAddress", type: "error" },
 ];
 
 function splitList(raw: string): string[] {
@@ -220,10 +254,8 @@ function parseQuotaList(raw: string): bigint[] {
 function pctToBp(value: string | undefined): number {
   const num = Number(value || "0");
   if (!Number.isFinite(num) || num < 0) throw new Error("税率必须是非负数字");
-  // 兼容两种输入习惯：
-  // - 百分比（如 5 表示 5%）→ 转换为 500 basis points
-  // - basis points（如 500 表示 5%）→ 直接使用
-  const basisPoints = num <= 25 ? Math.round(num * 100) : Math.round(num);
+  // 页面字段统一使用百分比；需要 basis points 的页面应先显式除以 100。
+  const basisPoints = Math.round(num * 100);
   if (basisPoints > 65535) throw new Error("单项税率超出 uint16 范围");
   return basisPoints;
 }
@@ -294,16 +326,72 @@ export function buildCreateTokenParams(
   };
 }
 
-/** 从链上读取当前创建费用（单位：wei） */
-export async function fetchCreateFee(): Promise<string> {
-  try {
-    const provider = new ethers.JsonRpcProvider(BSC_RPC_URL);
-    const contract = new ethers.Contract(SNOWBALL_LAUNCHPAD_ADDRESS, LAUNCHPAD_ABI, provider);
-    const fee = await contract.createFee();
-    return fee.toString();
-  } catch {
-    return DEFAULT_CREATE_FEE_WEI;
+function trimFormattedAmount(value: string): string {
+  return value.includes(".") ? value.replace(/0+$/, "").replace(/\.$/, "") : value;
+}
+
+export function formatCreateFee(feeValue: bigint | string): CreateFeeDisplay {
+  const fee = typeof feeValue === "bigint" ? feeValue : BigInt(feeValue);
+  if (fee < 0n) throw new Error("创建费不能是负数");
+  if (fee === 0n) {
+    return {
+      amount: "0",
+      fullLabel: "当前免创建费（0 BNB）",
+      buttonLabel: "免创建费 · 仅需 Gas",
+      isFree: true,
+    };
   }
+  const amount = trimFormattedAmount(ethers.formatEther(fee));
+  return {
+    amount,
+    fullLabel: `${amount} BNB`,
+    buttonLabel: `${amount} BNB + Gas`,
+    isFree: false,
+  };
+}
+
+async function verifySnowballLaunchpad(provider: ethers.Provider): Promise<string> {
+  const network = await provider.getNetwork();
+  if (Number(network.chainId) !== BSC_CHAIN_ID) {
+    throw new Error("Snowball 发币工厂仅部署在 BNB Smart Chain（Chain ID 56）");
+  }
+  const code = await provider.getCode(SNOWBALL_LAUNCHPAD_ADDRESS);
+  if (code === "0x") throw new Error("当前网络没有部署 Snowball 发币工厂");
+  const runtimeHash = ethers.keccak256(code);
+  if (runtimeHash.toLowerCase() !== SNOWBALL_LAUNCHPAD_RUNTIME_HASH.toLowerCase()) {
+    throw new Error("Factory 运行时代码与 SnowballLaunchpad.sol 不一致，已阻止交易");
+  }
+  return runtimeHash;
+}
+
+/** 读取并校验 Snowball Factory 的主网实时状态，不使用源码默认值冒充链上值。 */
+export async function fetchSnowballLaunchpadStatus(
+  provider: ethers.Provider = new ethers.JsonRpcProvider(BSC_RPC_URL, BSC_CHAIN_ID, { staticNetwork: true })
+): Promise<SnowballLaunchpadStatus> {
+  const runtimeHash = await verifySnowballLaunchpad(provider);
+  const contract = new ethers.Contract(SNOWBALL_LAUNCHPAD_ADDRESS, LAUNCHPAD_ABI, provider);
+  const [createFee, feeReceiver, defaultRewardToken, owner, tokenCount] = await Promise.all([
+    contract.createFee() as Promise<bigint>,
+    contract.feeReceiver() as Promise<string>,
+    contract.defaultRewardToken() as Promise<string>,
+    contract.owner() as Promise<string>,
+    contract.allTokensLength() as Promise<bigint>,
+  ]);
+  return {
+    address: SNOWBALL_LAUNCHPAD_ADDRESS,
+    createFee,
+    feeReceiver: ethers.getAddress(feeReceiver),
+    defaultRewardToken: ethers.getAddress(defaultRewardToken),
+    owner: ethers.getAddress(owner),
+    tokenCount,
+    runtimeHash,
+    runtimeVerified: true,
+  };
+}
+
+/** 从链上读取当前创建费用（单位：wei）；读取失败时抛错，避免错误显示为 0 或 0.005。 */
+export async function fetchCreateFee(): Promise<string> {
+  return (await fetchSnowballLaunchpadStatus()).createFee.toString();
 }
 
 export async function preflightCreateToken(
@@ -312,8 +400,7 @@ export async function preflightCreateToken(
 ): Promise<CreateTokenPreflight> {
   const provider = signer.provider;
   if (!provider) throw new Error("钱包 Provider 不可用");
-  const code = await provider.getCode(SNOWBALL_LAUNCHPAD_ADDRESS);
-  if (code === "0x") throw new Error("当前网络未部署发币 Factory，请切换到 BNB Smart Chain");
+  await verifySnowballLaunchpad(provider);
 
   const contract = new ethers.Contract(SNOWBALL_LAUNCHPAD_ADDRESS, LAUNCHPAD_ABI, signer);
   const fee = (await contract.createFee()) as bigint;
@@ -325,9 +412,21 @@ export async function preflightCreateToken(
 export async function submitCreateToken(
   signer: ethers.Signer,
   params: CreateTokenParams,
-  fee: bigint
-): Promise<{ tokenAddress: string; txHash: string; receipt: ethers.ContractTransactionReceipt | null }> {
+  expectedFee: bigint
+): Promise<{
+  tokenAddress: string;
+  txHash: string;
+  paidFee: bigint;
+  receipt: ethers.ContractTransactionReceipt | null;
+}> {
+  const provider = signer.provider;
+  if (!provider) throw new Error("钱包 Provider 不可用");
+  await verifySnowballLaunchpad(provider);
   const contract = new ethers.Contract(SNOWBALL_LAUNCHPAD_ADDRESS, LAUNCHPAD_ABI, signer);
+  const fee = (await contract.createFee()) as bigint;
+  if (fee !== expectedFee) {
+    await contract.createToken.estimateGas(params, { value: fee });
+  }
   const tx = await contract.createToken(params, { value: fee });
   const receipt = await tx.wait();
   const event = receipt?.logs
@@ -341,5 +440,5 @@ export async function submitCreateToken(
     .find((parsed: ethers.LogDescription | null) => parsed?.name === "TokenCreated");
   const tokenAddress = (event?.args?.token as string | undefined) ?? "";
   if (!ethers.isAddress(tokenAddress)) throw new Error("交易成功，但未找到 TokenCreated 事件中的代币地址");
-  return { tokenAddress: ethers.getAddress(tokenAddress), txHash: tx.hash, receipt };
+  return { tokenAddress: ethers.getAddress(tokenAddress), txHash: tx.hash, paidFee: fee, receipt };
 }

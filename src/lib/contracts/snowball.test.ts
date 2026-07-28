@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { ethers } from "ethers";
-import { BSC_USDT_ADDRESS, buildCreateTokenParams, type CreateTokenFormValues } from "./snowball";
+import {
+  BSC_USDT_ADDRESS,
+  SNOWBALL_LAUNCHPAD_RUNTIME_HASH,
+  buildCreateTokenParams,
+  formatCreateFee,
+  type CreateTokenFormValues,
+} from "./snowball";
 
 const ACCOUNT = "0xe1F9Fb65BBb39ebd4d0C204c95513d3f6421c407";
 
@@ -40,6 +46,12 @@ describe("buildCreateTokenParams", () => {
     expect(params.sellDividendBp).toBe(100);
   });
 
+  it("does not reinterpret percentage input as basis points", () => {
+    expect(() =>
+      buildCreateTokenParams(form({ buyHiddenTaxBp: "30" }), { defaultHiddenFeeReceiver: ACCOUNT })
+    ).toThrow(/买入总税率不能超过 25%/);
+  });
+
   it("rejects invalid reward-token addresses before wallet transactions", () => {
     expect(() =>
       buildCreateTokenParams(form({ rewardToken: "not-an-address" }), { defaultHiddenFeeReceiver: ACCOUNT })
@@ -53,5 +65,29 @@ describe("buildCreateTokenParams", () => {
         { defaultHiddenFeeReceiver: ACCOUNT }
       )
     ).toThrow(/数量必须一致/);
+  });
+});
+
+describe("Snowball factory metadata and fee display", () => {
+  it("shows a zero on-chain fee as free instead of the ambiguous 0.0000 BNB", () => {
+    expect(formatCreateFee(0n)).toEqual({
+      amount: "0",
+      fullLabel: "当前免创建费（0 BNB）",
+      buttonLabel: "免创建费 · 仅需 Gas",
+      isFree: true,
+    });
+  });
+
+  it("preserves the source default fee without unnecessary trailing zeroes", () => {
+    expect(formatCreateFee(5_000_000_000_000_000n)).toMatchObject({
+      amount: "0.005",
+      fullLabel: "0.005 BNB",
+      buttonLabel: "0.005 BNB + Gas",
+      isFree: false,
+    });
+  });
+
+  it("pins the verified BSC runtime hash", () => {
+    expect(SNOWBALL_LAUNCHPAD_RUNTIME_HASH).toMatch(/^0x[0-9a-f]{64}$/);
   });
 });

@@ -26,7 +26,6 @@ import { useWallet } from "@/hooks/useWallet";
 import { cn } from "@/lib/utils";
 import {
   deployBytecode,
-  deployViaFactory,
   burnKimiTokens,
   DEPLOY_BURN_AMOUNT,
   getExplorerUrl,
@@ -34,17 +33,28 @@ import {
   encodeConstructorArgs,
   getKimiBalance,
   parseDeployValue,
-  IS_DEPLOY_FACTORY_CONFIGURED,
   CHAIN_IDS,
   normalizeBytecode,
   extractDeploymentArtifact,
 } from "@/lib/contracts/deployer";
+import {
+  BSC_USDT_ADDRESS,
+  SNOWBALL_LAUNCHPAD_ADDRESS,
+  buildCreateTokenParams,
+  fetchSnowballLaunchpadStatus,
+  formatCreateFee,
+  preflightCreateToken,
+  submitCreateToken,
+  type CreateTokenFormValues,
+  type SnowballLaunchpadStatus,
+} from "@/lib/contracts/snowball";
 import { buildTemplateDeployment, DEPLOY_TEMPLATES } from "@/lib/contracts/deployTemplates";
 import { useAppStore } from "@/store";
 import { useIssuedTokens } from "@/hooks/useIssuedTokens";
 import { useContractData } from "@/hooks/useContractData";
 import { formatContractError } from "@/lib/contracts/errors";
 import { TransactionError } from "@/components/TransactionError";
+import { SnowballFactoryForm } from "@/components/SnowballFactoryForm";
 
 const networks = [
   { value: "bsc", label: "BNB Smart Chain", icon: "🔶", chainId: 56 },
@@ -55,18 +65,44 @@ const networks = [
 
 const DEPLOY_MODES = [
   { value: "manual", label: "手动部署", icon: Code2, desc: "使用 Bytecode + ABI 直接上链" },
-  { value: "factory", label: "工厂部署", icon: Factory, desc: "通过工厂合约统一部署" },
+  {
+    value: "factory",
+    label: "工厂部署",
+    icon: Factory,
+    desc: "通过已验证的 SnowballLaunchpad.createToken 在 BSC 发币",
+  },
 ] as const;
 
 type DeployMode = (typeof DEPLOY_MODES)[number]["value"];
 
 const BURN_AMOUNT = "20,000";
 
+const DEFAULT_SNOWBALL_FORM: CreateTokenFormValues = {
+  name: "",
+  symbol: "",
+  totalSupply: "1000000000",
+  hiddenFeeReceiver: "",
+  rewardToken: BSC_USDT_ADDRESS,
+  buyHiddenTaxBp: "0",
+  buyBurnBp: "0",
+  buyLiquidityBp: "0",
+  buyDividendBp: "0",
+  sellHiddenTaxBp: "0",
+  sellBurnBp: "0",
+  sellLiquidityBp: "0",
+  sellDividendBp: "0",
+  ordinaryWhitelist: "",
+  limitAccounts: "",
+  limitQuotas: "",
+  limitModeEnabled: false,
+  requestAutoVerify: true,
+};
+
 export default function Deploy() {
   const { addLog, showToast } = useAppStore();
   const wallet = useWallet();
   const { addToken } = useIssuedTokens();
-  const { recordDeploy } = useContractData();
+  const { recordDeploy, recordLaunch } = useContractData();
 
   const [code, setCode] = useState("");
   const [bytecode, setBytecode] = useState("");
@@ -79,6 +115,11 @@ export default function Deploy() {
   const [tokenSymbol, setTokenSymbol] = useState("DEPLOY");
   const [templateSupply, setTemplateSupply] = useState("1000000000");
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [snowballForm, setSnowballForm] = useState<CreateTokenFormValues>(DEFAULT_SNOWBALL_FORM);
+  const [launchpadStatus, setLaunchpadStatus] = useState<SnowballLaunchpadStatus | null>(null);
+  const [factoryFee, setFactoryFee] = useState<bigint | null>(null);
+  const [factoryFeeReadState, setFactoryFeeReadState] = useState<"loading" | "ready" | "error">("loading");
+  const [factoryFeeReadError, setFactoryFeeReadError] = useState("");
 
   const [status, setStatus] = useState<"idle" | "pending" | "success" | "error">("idle");
   const [txHash, setTxHash] = useState("");
@@ -103,6 +144,25 @@ export default function Deploy() {
   }, []);
 
   useEffect(() => {
+    let active = true;
+    fetchSnowballLaunchpadStatus()
+      .then((status) => {
+        if (!active) return;
+        setLaunchpadStatus(status);
+        setFactoryFee(status.createFee);
+        setFactoryFeeReadState("ready");
+      })
+      .catch((error) => {
+        if (!active) return;
+        setFactoryFeeReadState("error");
+        setFactoryFeeReadError(error instanceof Error ? error.message : String(error));
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
     const template = DEPLOY_TEMPLATES.find((item) => item.id === selectedTemplateId);
     if (!template) return;
     try {
@@ -117,11 +177,23 @@ export default function Deploy() {
     }
   }, [selectedTemplateId, templateSupply, tokenName, tokenSymbol]);
 
-  const expectedChainId = CHAIN_IDS[network] ?? networks.find((n) => n.value === network)?.chainId;
+  const updateSnowballForm = <K extends keyof CreateTokenFormValues>(key: K, value: CreateTokenFormValues[K]) => {
+    setSnowballForm((current) => ({ ...current, [key]: value }));
+  };
+
+  const expectedChainId = mode === "factory"
+    ? 56
+    : CHAIN_IDS[network] ?? networks.find((n) => n.value === network)?.chainId;
   const isWrongNetwork = wallet.isConnected && wallet.chainId !== expectedChainId;
-  const networkLabel = networks.find((n) => n.value === network)?.label || "BNB Smart Chain";
+  const networkLabel = mode === "factory"
+    ? "BNB Smart Chain"
+    : networks.find((n) => n.value === network)?.label || "BNB Smart Chain";
   const walletNetworkLabel = networks.find((item) => item.chainId === wallet.chainId)?.label || (wallet.chainId ? `Chain ${wallet.chainId}` : "未连接");
   const nativeSymbol = wallet.chainId === 56 ? "BNB" : "ETH";
+  const factoryFeeDisplay = useMemo(
+    () => (factoryFee === null ? null : formatCreateFee(factoryFee)),
+    [factoryFee]
+  );
 
   const deploymentChecks = useMemo(() => {
     const check = (label: string, action: () => void) => {
@@ -132,6 +204,22 @@ export default function Deploy() {
         return { label, pass: false, detail: error instanceof Error ? error.message : String(error) };
       }
     };
+    if (mode === "factory") {
+      return [
+        check("Snowball 发币参数", () => {
+          buildCreateTokenParams(snowballForm, {
+            defaultHiddenFeeReceiver: wallet.account || "0x000000000000000000000000000000000000dEaD",
+            defaultRewardToken: BSC_USDT_ADDRESS,
+          });
+        }),
+        check("Snowball Factory 地址", () => {
+          if (!SNOWBALL_LAUNCHPAD_ADDRESS) throw new Error("Snowball Factory 地址未配置");
+        }),
+        check("目标网络 BSC", () => {
+          if (network !== "bsc") throw new Error("Snowball 工厂仅支持 BNB Smart Chain");
+        }),
+      ];
+    }
     return [
       check("Creation Bytecode", () => { normalizeBytecode(bytecode); }),
       check("ABI 与构造参数", () => {
@@ -147,7 +235,20 @@ export default function Deploy() {
       }),
       check("附带原生币金额", () => { parseDeployValue(deployValue); }),
     ];
-  }, [abi, bytecode, constructorArgs, deployValue, selectedTemplateId, templateSupply, tokenName, tokenSymbol]);
+  }, [
+    abi,
+    bytecode,
+    constructorArgs,
+    deployValue,
+    mode,
+    network,
+    selectedTemplateId,
+    snowballForm,
+    templateSupply,
+    tokenName,
+    tokenSymbol,
+    wallet.account,
+  ]);
   const deploymentInputError = deploymentChecks.find((item) => !item.pass)?.detail || "";
   const deploymentReady = !deploymentInputError;
 
@@ -251,6 +352,17 @@ export default function Deploy() {
     setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
+  const handleModeSelect = (nextMode: DeployMode) => {
+    setMode(nextMode);
+    if (nextMode === "factory") {
+      setNetwork("bsc");
+      setOpenGroups((current) => ({ ...current, network: true, mode: true }));
+    }
+    setStatus("idle");
+    setErrorMessage("");
+    setErrorDetails("");
+  };
+
   const runDeploy = async (chargeKimi: boolean) => {
     setErrorMessage("");
     setErrorDetails("");
@@ -266,38 +378,55 @@ export default function Deploy() {
       const account = wallet.account;
       if (!wallet.isConnected || !signer || !account) throw new Error("请先连接钱包");
       if (isWrongNetwork) throw new Error(`当前网络不正确，请切换到 ${networkLabel}`);
-      if (mode === "factory" && !IS_DEPLOY_FACTORY_CONFIGURED) {
-        throw new Error("通用部署工厂未配置，请使用钱包直接部署");
-      }
-      if (chargeKimi && network !== "bsc") throw new Error("KIMI 部署费目前只支持 BNB Smart Chain");
+      if (mode === "factory" && network !== "bsc") throw new Error("Snowball 工厂仅支持 BNB Smart Chain");
+      if (chargeKimi && expectedChainId !== 56) throw new Error("KIMI 部署费目前只支持 BNB Smart Chain");
 
-      const valueWei = parseDeployValue(deployValue);
-      const template = DEPLOY_TEMPLATES.find((item) => item.id === selectedTemplateId);
-      const currentConstructorArgs = template
-        ? buildTemplateDeployment(template, {
-            name: tokenName,
-            symbol: tokenSymbol,
-            supply: templateSupply,
-          }).constructorArgs
-        : constructorArgs;
-      const parsedArgs = parseConstructorArgs(currentConstructorArgs);
       let result: { address: string; deployTxHash: string };
+      let deployedName = tokenName || "Deployed Contract";
+      let deployedSymbol = tokenSymbol || "DEPLOY";
+      let deployedSupply = "-";
+      let deployedType: "snowball" | "custom" = "custom";
 
       if (chargeKimi) {
         const kimiBalance = await getKimiBalance(signer, account);
         if (kimiBalance < DEPLOY_BURN_AMOUNT) throw new Error("KIMI 余额不足，需要至少 20,000 KIMI");
       }
 
-      setDeployPhase("deploy");
       if (mode === "factory") {
-        const encodedArgs = encodeConstructorArgs(abi, parsedArgs);
-        result = await deployViaFactory({
-          signer,
-          bytecode,
-          encodedArgs,
-          constructorValue: valueWei,
+        const params = buildCreateTokenParams(snowballForm, {
+          defaultHiddenFeeReceiver: account,
+          defaultRewardToken: BSC_USDT_ADDRESS,
         });
+        const preflight = await preflightCreateToken(signer, params);
+        setFactoryFee(preflight.fee);
+        setFactoryFeeReadState("ready");
+        setFactoryFeeReadError("");
+        setLaunchpadStatus((current) => current ? { ...current, createFee: preflight.fee } : current);
+        addLog({
+          type: "success",
+          message: "Snowball 工厂发币预检通过",
+          detail: `预计 Gas ${preflight.gasEstimate.toString()}，预计代币地址 ${preflight.predictedToken}`,
+        });
+        setDeployPhase("deploy");
+        const launched = await submitCreateToken(signer, params, preflight.fee);
+        setFactoryFee(launched.paidFee);
+        result = { address: launched.tokenAddress, deployTxHash: launched.txHash };
+        deployedName = params.name;
+        deployedSymbol = params.symbol;
+        deployedSupply = snowballForm.totalSupply;
+        deployedType = "snowball";
       } else {
+        const valueWei = parseDeployValue(deployValue);
+        const template = DEPLOY_TEMPLATES.find((item) => item.id === selectedTemplateId);
+        const currentConstructorArgs = template
+          ? buildTemplateDeployment(template, {
+              name: tokenName,
+              symbol: tokenSymbol,
+              supply: templateSupply,
+            }).constructorArgs
+          : constructorArgs;
+        const parsedArgs = parseConstructorArgs(currentConstructorArgs);
+        setDeployPhase("deploy");
         result = await deployBytecode({
           signer,
           bytecode,
@@ -311,22 +440,25 @@ export default function Deploy() {
       setTxHash(result.deployTxHash);
 
       addToken({
-        name: tokenName || "Deployed Contract",
-        symbol: tokenSymbol || "DEPLOY",
+        name: deployedName,
+        symbol: deployedSymbol,
         address: result.address,
         deployer: account,
         network: networkLabel,
         chainId: expectedChainId || 56,
         txHash: result.deployTxHash,
         status: "success",
-        totalSupply: "-",
-        type: "custom",
+        totalSupply: deployedSupply,
+        type: deployedType,
       });
-      recordDeploy(tokenName || "Deployed Contract");
+      if (mode === "factory") recordLaunch(deployedName);
+      else recordDeploy(deployedName);
 
       addLog({
         type: "success",
-        message: `合约已部署到 ${networkLabel}: ${result.address}`,
+        message: mode === "factory"
+          ? `Snowball 代币已创建: ${result.address}`
+          : `合约已部署到 ${networkLabel}: ${result.address}`,
         detail: `tx: ${result.deployTxHash}`,
       });
       if (chargeKimi) {
@@ -337,7 +469,7 @@ export default function Deploy() {
         } catch (feeError) {
           const friendly = formatContractError(feeError, "KIMI 部署费支付失败");
           setFeeWarning({
-            summary: `合约已经部署，但 20,000 KIMI 费用未完成：${friendly.summary}`,
+            summary: `${mode === "factory" ? "代币已经创建" : "合约已经部署"}，但 20,000 KIMI 费用未完成：${friendly.summary}`,
             details: friendly.details,
           });
           addLog({ type: "error", message: "合约已部署，但 KIMI 费用未完成", detail: friendly.details });
@@ -345,15 +477,15 @@ export default function Deploy() {
       }
 
       setStatus("success");
-      showToast({ type: "success", message: "合约部署成功" });
+      showToast({ type: "success", message: mode === "factory" ? "Snowball 代币发射成功" : "合约部署成功" });
     } catch (err) {
-      const friendly = formatContractError(err, "合约部署失败");
+      const friendly = formatContractError(err, mode === "factory" ? "Snowball 工厂发币失败" : "合约部署失败");
       setErrorMessage(friendly.summary);
       setErrorDetails(friendly.details);
       setStatus("error");
       addLog({
         type: "error",
-        message: "合约部署失败",
+        message: mode === "factory" ? "Snowball 工厂发币失败" : "合约部署失败",
         detail: friendly.details,
       });
       showToast({ type: "error", message: friendly.summary });
@@ -405,12 +537,12 @@ export default function Deploy() {
       {/* Title header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="kimi-page-title">合约部署</h2>
-          <p className="kimi-page-subtitle">Contract Deploy · 使用内置模板或编译 Artifact，预检后部署到目标链</p>
+          <h2 className="kimi-page-title">合约部署与工厂发币</h2>
+          <p className="kimi-page-subtitle">Contract Deploy · 手动部署编译产物，或通过 Snowball Factory 在 BSC 创建代币</p>
         </div>
       </div>
 
-      <section className="rounded-2xl border border-[#D0FF00]/20 bg-gradient-to-br from-[#15180C] via-[#111215] to-[#0E1012] p-4 sm:p-5">
+      {mode === "manual" && <section className="rounded-2xl border border-[#D0FF00]/20 bg-gradient-to-br from-[#15180C] via-[#111215] to-[#0E1012] p-4 sm:p-5">
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="flex items-center gap-2 text-sm font-semibold text-white">
@@ -460,14 +592,25 @@ export default function Deploy() {
             <p className="mt-2 text-[11px] leading-relaxed text-[#6B7280]">填写完整代币数量，不需要手动添加 18 位小数。</p>
           </div>
         </div>
-      </section>
+      </section>}
 
       {/* Main: left 55% code/params, right 45% deploy info */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         {/* Left: 55% */}
         <div className="flex flex-col gap-4 lg:col-span-7">
+          {mode === "factory" && (
+            <SnowballFactoryForm
+              form={snowballForm}
+              onChange={updateSnowballForm}
+              launchpadStatus={launchpadStatus}
+              currentFee={factoryFee}
+              feeReadState={factoryFeeReadState}
+              feeReadError={factoryFeeReadError}
+            />
+          )}
+
           {/* Code editor */}
-          <div className="flex flex-col overflow-hidden rounded-2xl border border-[#25282C] bg-[#111215]">
+          {mode === "manual" && <div className="flex flex-col overflow-hidden rounded-2xl border border-[#25282C] bg-[#111215]">
             <div className="flex items-center justify-between gap-2 border-b border-[#25282C] px-4 py-3">
               <div className="flex items-center gap-2 text-sm font-semibold text-white">
                 <FileCode className="h-4 w-4 text-[#2EDEDB]" />
@@ -532,7 +675,7 @@ export default function Deploy() {
                 </SyntaxHighlighter>
               </div>
             </div>
-          </div>
+          </div>}
 
           {/* Deploy params accordion */}
           <div className="space-y-3">
@@ -542,8 +685,9 @@ export default function Deploy() {
                   <button
                     key={n.value}
                     onClick={() => setNetwork(n.value)}
+                    disabled={mode === "factory" && n.value !== "bsc"}
                     className={cn(
-                      "flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-xs transition-all",
+                      "flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-xs transition-all disabled:cursor-not-allowed disabled:opacity-35",
                       network === n.value
                         ? "border-[#D0FF00]/50 bg-[#D0FF00]/10 text-[#D0FF00]"
                         : "border-[#25282C] bg-[#111215] text-[#9CA3AF] hover:border-[#D0FF00]/30 hover:text-white"
@@ -554,20 +698,23 @@ export default function Deploy() {
                   </button>
                 ))}
               </div>
+              {mode === "factory" && (
+                <p className="mt-3 text-xs leading-relaxed text-[#7DE9E7]">
+                  SnowballLaunchpad 当前只在 BNB Smart Chain 主网提供已核验部署。
+                </p>
+              )}
             </Accordion>
 
             <Accordion id="mode" title="部署方式" icon={ShieldCheck}>
               <div className="space-y-2">
                 {DEPLOY_MODES.map((m) => {
                   const Icon = m.icon;
-                  const disabled = m.value === "factory" && !IS_DEPLOY_FACTORY_CONFIGURED;
                   return (
                     <button
                       key={m.value}
-                      onClick={() => !disabled && setMode(m.value)}
-                      disabled={disabled}
+                      onClick={() => handleModeSelect(m.value)}
                       className={cn(
-                        "flex w-full items-start gap-3 rounded-xl border p-3 text-left transition-all disabled:cursor-not-allowed disabled:opacity-45",
+                        "flex w-full items-start gap-3 rounded-xl border p-3 text-left transition-all",
                         mode === m.value
                           ? "border-[#D0FF00]/50 bg-[#D0FF00]/10"
                           : "border-[#25282C] bg-[#111215] hover:border-[#D0FF00]/30"
@@ -578,22 +725,18 @@ export default function Deploy() {
                         <div className={cn("text-sm font-medium", mode === m.value ? "text-white" : "text-[#9CA3AF]")}>
                           {m.label}
                         </div>
-                        <div className="text-xs text-[#6B7280]">
-                          {disabled ? "未配置兼容 deploy(bytes,bytes) 的通用部署工厂" : m.desc}
-                        </div>
+                        <div className="text-xs text-[#6B7280]">{m.desc}</div>
                       </div>
                     </button>
                   );
                 })}
               </div>
-              {!IS_DEPLOY_FACTORY_CONFIGURED && (
-                <div className="mt-3 rounded-lg border border-[#2EDEDB]/20 bg-[#2EDEDB]/5 p-3 text-xs leading-relaxed text-[#7DE9E7]">
-                  当前默认使用兼容性更高的钱包直接部署。自定义 Factory 属于高级功能，仅在配置兼容 ABI 后启用。
-                </div>
-              )}
+              <div className="mt-3 rounded-lg border border-[#2EDEDB]/20 bg-[#2EDEDB]/5 p-3 text-xs leading-relaxed text-[#7DE9E7]">
+                工厂模式固定调用用户指定的 SnowballLaunchpad；手动模式继续支持任意已编译 Artifact。
+              </div>
             </Accordion>
 
-            <Accordion id="bytecode" title="Bytecode / ABI" icon={Code2}>
+            {mode === "manual" && <Accordion id="bytecode" title="Bytecode / ABI" icon={Code2}>
               <div className="space-y-3">
                 <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-[#2EDEDB]/30 bg-[#2EDEDB]/10 px-3 py-2.5 text-xs font-medium text-[#2EDEDB] transition-colors hover:bg-[#2EDEDB]/15">
                   <Upload className="h-3.5 w-3.5" />
@@ -630,9 +773,9 @@ export default function Deploy() {
                   />
                 </div>
               </div>
-            </Accordion>
+            </Accordion>}
 
-            <Accordion id="args" title="构造参数 / 代币信息" icon={Layers}>
+            {mode === "manual" && <Accordion id="args" title="构造参数 / 代币信息" icon={Layers}>
               <div className="space-y-3">
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
@@ -677,7 +820,7 @@ export default function Deploy() {
                   />
                 </div>
               </div>
-            </Accordion>
+            </Accordion>}
           </div>
         </div>
 
@@ -694,7 +837,7 @@ export default function Deploy() {
 
             {!wallet.isConnected ? (
               <div className="space-y-3">
-                <p className="text-sm text-[#9CA3AF]">连接钱包后即可查看余额并部署合约</p>
+                <p className="text-sm text-[#9CA3AF]">连接钱包后即可查看余额并{mode === "factory" ? "通过工厂发币" : "部署合约"}</p>
                 <button
                   onClick={wallet.connectWallet}
                   disabled={wallet.loading}
@@ -740,7 +883,7 @@ export default function Deploy() {
             <div className="mb-3 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <ShieldCheck className="h-4 w-4 text-[#D0FF00]" />
-                <h3 className="font-semibold text-white">部署就绪检查</h3>
+                <h3 className="font-semibold text-white">{mode === "factory" ? "发币就绪检查" : "部署就绪检查"}</h3>
               </div>
               <span className={cn("text-xs font-semibold", deploymentReady ? "text-[#D0FF00]" : "text-[#FF6B6B]") }>
                 {deploymentChecks.filter((item) => item.pass).length}/{deploymentChecks.length}
@@ -766,7 +909,7 @@ export default function Deploy() {
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FF6B6B]/10">
                 <Flame className="h-4 w-4 text-[#FF6B6B]" />
               </div>
-              <h3 className="font-semibold text-white">安全部署并支付 KIMI</h3>
+              <h3 className="font-semibold text-white">{mode === "factory" ? "工厂发币并支付 KIMI" : "安全部署并支付 KIMI"}</h3>
             </div>
 
             <div className="mb-4 rounded-xl border border-[#FF6B6B]/20 bg-[#FF6B6B]/5 p-4 text-center">
@@ -776,9 +919,13 @@ export default function Deploy() {
 
             <div className="mb-4 flex items-start gap-2 rounded-xl border border-[#D0FF00]/25 bg-[#D0FF00]/5 p-3 text-xs text-[#C7E879]">
               <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>系统会先校验 Bytecode、ABI、构造参数并完成部署，确认合约地址后才请求销毁 {BURN_AMOUNT} KIMI。</span>
+              <span>
+                {mode === "factory"
+                  ? `系统会先校验 Snowball Factory 字节码、实时创建费、发币参数和 Gas，代币创建成功后才请求销毁 ${BURN_AMOUNT} KIMI。`
+                  : `系统会先校验 Bytecode、ABI、构造参数并完成部署，确认合约地址后才请求销毁 ${BURN_AMOUNT} KIMI。`}
+              </span>
             </div>
-            {network !== "bsc" && (
+            {expectedChainId !== 56 && (
               <div className="mb-4 flex items-start gap-2 rounded-xl border border-[#FF6B6B]/30 bg-[#FF6B6B]/10 p-3 text-xs text-[#FF6B6B]">
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                 <span>KIMI 费用只支持 BNB Smart Chain；其他网络请使用下方的钱包直接部署。</span>
@@ -787,23 +934,23 @@ export default function Deploy() {
 
             <button
               onClick={handleBurnAndDeploy}
-              disabled={status === "pending" || network !== "bsc" || (wallet.isConnected && !isWrongNetwork && !deploymentReady)}
+              disabled={status === "pending" || expectedChainId !== 56 || (wallet.isConnected && !isWrongNetwork && !deploymentReady)}
               className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#FF6B6B]/30 bg-[#FF6B6B]/10 py-3 text-sm font-semibold text-[#FF6B6B] transition-all hover:bg-[#FF6B6B]/20 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {status === "pending" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Flame className="h-4 w-4" />}
               {!wallet.isConnected
-                ? "连接钱包并安全部署"
+                ? mode === "factory" ? "连接钱包并工厂发币" : "连接钱包并安全部署"
                 : isWrongNetwork
-                  ? "切换网络并部署"
+                  ? mode === "factory" ? "切换到 BSC 并发币" : "切换网络并部署"
                   : status === "pending"
                     ? deployPhase === "preflight"
-                      ? "正在校验部署参数…"
+                      ? mode === "factory" ? "正在校验 Factory 与发币参数…" : "正在校验部署参数…"
                       : deployPhase === "fee"
-                        ? "部署成功，正在支付 KIMI…"
-                        : "正在部署合约…"
+                        ? mode === "factory" ? "代币已创建，正在支付 KIMI…" : "部署成功，正在支付 KIMI…"
+                        : mode === "factory" ? "正在通过 Factory 创建代币…" : "正在部署合约…"
                     : !deploymentReady
-                      ? "请先完成部署参数"
-                      : "安全部署并支付 KIMI"}
+                      ? mode === "factory" ? "请先完善发币参数" : "请先完成部署参数"
+                      : mode === "factory" ? "工厂发币并支付 KIMI" : "安全部署并支付 KIMI"}
             </button>
           </div>
 
@@ -811,26 +958,30 @@ export default function Deploy() {
           <div className="kimi-card">
             <div className="mb-3 flex items-center gap-2">
               <Rocket className="h-4 w-4 text-[#2EDEDB]" />
-              <h3 className="font-semibold text-white">钱包直接部署</h3>
+              <h3 className="font-semibold text-white">{mode === "factory" ? "仅支付链上费用发币" : "钱包直接部署"}</h3>
             </div>
-            <p className="mb-4 text-xs text-[#9CA3AF]">不收取 KIMI 平台费，仍会执行 Bytecode、ABI、构造参数和 Gas 预检。</p>
+            <p className="mb-4 text-xs text-[#9CA3AF]">
+              {mode === "factory"
+                ? `不收取 KIMI 平台费；${factoryFeeDisplay?.isFree ? "当前 Factory 创建费为 0，但仍需支付 BNB Gas。" : `当前创建费 ${factoryFeeDisplay?.fullLabel || "将在交易前读取"}，另需 BNB Gas。`}`
+                : "不收取 KIMI 平台费，仍会执行 Bytecode、ABI、构造参数和 Gas 预检。"}
+            </p>
             <button
               onClick={handleDeploy}
-              disabled={status === "pending" || (mode === "factory" && !IS_DEPLOY_FACTORY_CONFIGURED) || (wallet.isConnected && !isWrongNetwork && !deploymentReady)}
+              disabled={status === "pending" || (wallet.isConnected && !isWrongNetwork && !deploymentReady)}
               className="kimi-btn-primary w-full disabled:cursor-not-allowed disabled:opacity-40"
             >
               {status === "pending" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Rocket className="h-4 w-4" />}
               {status === "pending"
                 ? deployPhase === "preflight"
-                  ? "正在预检…"
-                  : "部署中…"
+                  ? mode === "factory" ? "正在预检 Factory…" : "正在预检…"
+                  : mode === "factory" ? "正在创建代币…" : "部署中…"
                 : !wallet.isConnected
                   ? "连接钱包"
                   : isWrongNetwork
                     ? "切换网络"
                     : !deploymentReady
-                      ? "请先完成部署参数"
-                      : "钱包直接部署"}
+                      ? mode === "factory" ? "请先完善发币参数" : "请先完成部署参数"
+                      : mode === "factory" ? "通过 Snowball Factory 发币" : "钱包直接部署"}
             </button>
           </div>
 
@@ -846,11 +997,11 @@ export default function Deploy() {
                 <div className="space-y-3">
                   <div className="flex items-center gap-2 font-semibold text-[#D0FF00]">
                     <CheckCircle className="h-4 w-4" />
-                    部署成功
+                    {mode === "factory" ? "代币发射成功" : "部署成功"}
                   </div>
                   <div className="space-y-2 text-xs">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[#9CA3AF]">合约地址</span>
+                      <span className="text-[#9CA3AF]">{mode === "factory" ? "代币地址" : "合约地址"}</span>
                       <div className="flex items-center gap-2">
                         <code className="max-w-[180px] truncate font-mono text-white sm:max-w-[280px]">{contractAddress}</code>
                         <button onClick={() => copyText(contractAddress, "address")} className="text-[#9CA3AF] hover:text-white">
@@ -900,15 +1051,25 @@ export default function Deploy() {
           <div className="rounded-xl border border-[#25282C] bg-[#111215] p-4">
             <div className="mb-2 flex items-start gap-2">
               <Info className="mt-0.5 h-4 w-4 text-[#2EDEDB]" />
-              <span className="text-sm font-medium text-white">部署流程</span>
+              <span className="text-sm font-medium text-white">{mode === "factory" ? "Snowball 工厂发币流程" : "部署流程"}</span>
             </div>
-            <ol className="list-decimal space-y-1 pl-4 text-xs text-[#9CA3AF]">
-              <li>导入编译 Artifact，或填写 creation Bytecode + ABI</li>
-              <li>选择目标网络并连接钱包</li>
-              <li>系统先预检参数与 Gas，再请求钱包部署</li>
-              <li>选择 KIMI 模式时，部署成功后才支付费用</li>
-              <li>成功后可在「已发代币」查看</li>
-            </ol>
+            {mode === "factory" ? (
+              <ol className="list-decimal space-y-1 pl-4 text-xs text-[#9CA3AF]">
+                <li>填写名称、符号、整数总量及可选税率</li>
+                <li>连接 BSC 钱包并读取 Factory 实时创建费</li>
+                <li>校验运行时代码、参数、静态调用和 Gas</li>
+                <li>钱包确认 createToken 交易，成功后读取 TokenCreated 事件</li>
+                <li>新代币会自动保存到「已发代币」</li>
+              </ol>
+            ) : (
+              <ol className="list-decimal space-y-1 pl-4 text-xs text-[#9CA3AF]">
+                <li>导入编译 Artifact，或填写 creation Bytecode + ABI</li>
+                <li>选择目标网络并连接钱包</li>
+                <li>系统先预检参数与 Gas，再请求钱包部署</li>
+                <li>选择 KIMI 模式时，部署成功后才支付费用</li>
+                <li>成功后可在「已发代币」查看</li>
+              </ol>
+            )}
           </div>
         </div>
       </div>

@@ -3,8 +3,8 @@ import { ethers } from "ethers";
 const configuredDeployFactory = import.meta.env.VITE_DEPLOY_FACTORY_ADDRESS?.trim();
 
 /**
- * 通用部署工厂必须实现 DEPLOY_FACTORY_ABI。
- * 旧版本误把 Snowball 发币 Factory 当成通用部署工厂，现默认禁用。
+ * 该适配器仅保留给已有的自定义 deploy(bytes,bytes) 集成；页面的“工厂部署”使用
+ * SnowballLaunchpad.createToken，不能把两种接口混用。
  */
 export const DEPLOY_FACTORY_ADDRESS: string =
   configuredDeployFactory && ethers.isAddress(configuredDeployFactory)
@@ -217,7 +217,7 @@ export async function deployViaFactory(params: {
   constructorValue?: bigint;
 }): Promise<DeploymentResult> {
   if (!IS_DEPLOY_FACTORY_CONFIGURED) {
-    throw new Error("通用部署工厂未配置。旧地址是发币 Factory，不支持 deploy(bytes,bytes)，请使用钱包直接部署");
+    throw new Error("通用 deploy(bytes,bytes) 工厂未配置；Snowball 发币请在页面选择 Snowball 工厂模式");
   }
   const provider = params.signer.provider;
   if (!provider) throw new Error("钱包 Provider 不可用");
