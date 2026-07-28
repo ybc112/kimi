@@ -2,7 +2,8 @@
 // Deploy: supabase functions deploy generate-image
 // Env: OPENAI_IMAGE_API_KEY, OPENAI_IMAGE_BASE_URL (default https://api.iotwq.top)
 // Optional: ALLOWED_ORIGINS=comma-separated list (e.g. https://kimi.example.com,http://localhost:5173)
-// Optional: RATE_LIMIT_PER_MINUTE=30
+// Optional: RATE_LIMIT_PER_MINUTE=10
+// Optional: BLOCKED_IPS=comma-separated list (e.g. 1.2.3.4,5.6.7.8)
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
@@ -10,7 +11,11 @@ const allowedOrigins = Deno.env.get("ALLOWED_ORIGINS")
   ? Deno.env.get("ALLOWED_ORIGINS")!.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)
   : [];
 
-const rateLimitPerMinute = Number(Deno.env.get("RATE_LIMIT_PER_MINUTE") || "30");
+const rateLimitPerMinute = Number(Deno.env.get("RATE_LIMIT_PER_MINUTE") || "10");
+
+const blockedIps = Deno.env.get("BLOCKED_IPS")
+  ? Deno.env.get("BLOCKED_IPS")!.split(",").map((s) => s.trim()).filter(Boolean)
+  : [];
 
 const ipBuckets = new Map<string, { count: number; resetAt: number }>();
 
@@ -20,6 +25,10 @@ function getClientIp(req: Request): string {
   const xForwarded = req.headers.get("x-forwarded-for");
   if (xForwarded) return xForwarded.split(",")[0].trim();
   return "unknown";
+}
+
+function isBlocked(ip: string): boolean {
+  return blockedIps.includes(ip);
 }
 
 function isRateLimited(ip: string): boolean {
@@ -72,6 +81,13 @@ serve(async (req) => {
   }
 
   const clientIp = getClientIp(req);
+  if (isBlocked(clientIp)) {
+    return new Response(JSON.stringify({ error: "Blocked" }), {
+      status: 403,
+      headers: { ...headers, "Content-Type": "application/json" },
+    });
+  }
+
   if (isRateLimited(clientIp)) {
     return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
       status: 429,

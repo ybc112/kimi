@@ -31,12 +31,14 @@ jobs:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           ALLOWED_ORIGINS: ${{ secrets.ALLOWED_ORIGINS }}
           RATE_LIMIT_PER_MINUTE: ${{ secrets.RATE_LIMIT_PER_MINUTE }}
+          BLOCKED_IPS: ${{ secrets.BLOCKED_IPS }}
         run: |
           supabase link --project-ref "$PROJECT_ID"
           supabase secrets set --project-ref "$PROJECT_ID" \
             OPENAI_IMAGE_API_KEY="$OPENAI_IMAGE_API_KEY" \
             DEEPSEEK_API_KEY="$DEEPSEEK_API_KEY" \
             ALLOWED_ORIGINS="$ALLOWED_ORIGINS" \
-            RATE_LIMIT_PER_MINUTE="$RATE_LIMIT_PER_MINUTE"
+            RATE_LIMIT_PER_MINUTE="$RATE_LIMIT_PER_MINUTE" \
+            BLOCKED_IPS="$BLOCKED_IPS"
           supabase functions deploy generate-image --project-ref "$PROJECT_ID"
           supabase functions deploy deepseek-chat --project-ref "$PROJECT_ID"
