@@ -3,6 +3,7 @@ import {
   SecurityError,
   assertAllowedOrigin,
   assertClientIpAllowed,
+  assertWalletNotBlocked,
   createAiSessionToken,
   enforceRateLimit,
   jsonResponse,
@@ -10,11 +11,14 @@ import {
   readPositiveInt,
   securityErrorResponse,
   buildWalletAccessMessage,
+  createCaptchaChallenge,
+  verifyCaptchaAnswer,
 } from "./ai-security.ts";
 
 const KIMI_TOKEN_ADDRESS = "0x9Aa9CADEc931C58c2a22Bbc5381b266d12887777";
 const BSC_RPC_URL = Deno.env.get("BSC_RPC_URL") || "https://bsc-rpc.publicnode.com";
-const SESSION_TTL_SECONDS = readPositiveInt("AI_SESSION_TTL_SECONDS", 600, 1_800);
+// Default session TTL reduced to 5 minutes to limit token reuse if stolen.
+const SESSION_TTL_SECONDS = readPositiveInt("AI_SESSION_TTL_SECONDS", 300, 1_800);
 
 type SessionRequest = {
   address?: unknown;
@@ -22,6 +26,8 @@ type SessionRequest = {
   timestamp?: unknown;
   nonce?: unknown;
   signature?: unknown;
+  captchaToken?: unknown;
+  captchaAnswer?: unknown;
 };
 
 function getMinimumKimi(): { label: string; amount: bigint } {
@@ -57,7 +63,34 @@ async function getKimiBalance(address: string): Promise<bigint> {
   return BigInt(payload.result);
 }
 
+export async function handleCaptchaRequest(req: Request): Promise<Response> {
+  if (req.method !== "POST" && req.method !== "OPTIONS") {
+    return jsonResponse(req, { error: "Method not allowed" }, 405);
+  }
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeadersFor(req) });
+  try {
+    assertAllowedOrigin(req);
+    assertClientIpAllowed(req);
+    const challenge = await createCaptchaChallenge();
+    return jsonResponse(req, challenge);
+  } catch (error) {
+    return securityErrorResponse(req, error);
+  }
+}
+
+function corsHeadersFor(req: Request): Record<string, string> {
+  const origin = req.headers.get("origin") || "";
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "apikey, x-client-info, authorization, content-type, x-kimi-ai-action, x-kimi-ai-session, x-kimi-captcha-token, x-kimi-captcha-answer",
+    "Cache-Control": "no-store",
+    "Vary": "Origin",
+  };
+}
+
 export async function handleAiSessionRequest(req: Request): Promise<Response> {
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeadersFor(req) });
   if (req.method !== "POST") return jsonResponse(req, { error: "Method not allowed" }, 405);
 
   try {
@@ -67,6 +100,12 @@ export async function handleAiSessionRequest(req: Request): Promise<Response> {
     enforceRateLimit(`ai-session:ip:${clientIp}`, 5, 60 * 60_000);
 
     const body = await readJsonBody<SessionRequest>(req, 16_384);
+
+    // CAPTCHA is mandatory for creating an AI session.
+    const captchaToken = typeof body.captchaToken === "string" ? body.captchaToken : "";
+    const captchaAnswer = typeof body.captchaAnswer === "string" ? body.captchaAnswer : "";
+    await verifyCaptchaAnswer(captchaToken, captchaAnswer);
+
     if (typeof body.origin !== "string" || body.origin.trim().toLowerCase() !== origin) {
       throw new SecurityError(403, "ORIGIN_MISMATCH", "签名站点与当前来源不一致");
     }
@@ -87,8 +126,10 @@ export async function handleAiSessionRequest(req: Request): Promise<Response> {
     }
 
     const address = ethers.getAddress(body.address);
+    assertWalletNotBlocked(address);
     enforceRateLimit(`ai-session:wallet:${address.toLowerCase()}`, 3, 60 * 60_000);
     enforceRateLimit(`ai-session:wallet-day:${address.toLowerCase()}`, 10, 24 * 60 * 60_000);
+
     const message = buildWalletAccessMessage({
       origin,
       address,

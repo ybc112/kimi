@@ -5,11 +5,13 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import {
   SecurityError,
   assertClientIpAllowed,
+  assertWalletNotBlocked,
   corsHeaders,
   enforceRateLimit,
   jsonResponse,
   readJsonBody,
   readPositiveInt,
+  recordWalletStrike,
   securityErrorResponse,
   verifyAiSession,
 } from "../_shared/ai-security.ts";
@@ -42,6 +44,7 @@ serve(async (req) => {
   try {
     const clientIp = assertClientIpAllowed(req);
     const session = await verifyAiSession(req);
+    assertWalletNotBlocked(session.wallet);
     enforceRateLimit(`image:wallet:${session.wallet}`, IMAGE_RATE_PER_TEN_MINUTES, 10 * 60_000);
     enforceRateLimit(`image:wallet-day:${session.wallet}`, IMAGE_RATE_PER_DAY, 24 * 60 * 60_000);
     enforceRateLimit(`image:ip:${clientIp}`, IMAGE_IP_RATE_PER_TEN_MINUTES, 10 * 60_000);
@@ -123,6 +126,18 @@ serve(async (req) => {
     }
     return jsonResponse(req, data as Record<string, unknown>);
   } catch (error) {
+    if (error instanceof SecurityError && error.code === "RATE_LIMITED") {
+      try {
+        const session = await verifyAiSession(req);
+        recordWalletStrike(session.wallet, "generate-image rate limit exceeded", {
+          threshold: 3,
+          windowMs: 10 * 60_000,
+          blockDurationMs: 60 * 60_000,
+        });
+      } catch {
+        // ignore session verification errors during error handling
+      }
+    }
     return securityErrorResponse(req, error);
   }
 });

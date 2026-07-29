@@ -33,8 +33,21 @@ const blockedIps = new Set(
     .filter(Boolean)
 );
 
+// Environment-level permanent wallet blocklist.
+const blockedWallets = new Set(
+  (Deno.env.get("BLOCKED_WALLETS") || "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter((value) => /^0x[a-fA-F0-9]{40}$/.test(value))
+);
+
 type RateBucket = { count: number; resetAt: number };
 const rateBuckets = new Map<string, RateBucket>();
+
+// Auto-block state: in-memory only, cleared on cold start.
+type AutoBlockRecord = { until: number; reason: string };
+const autoBlockedWallets = new Map<string, AutoBlockRecord>();
+const walletStrikeBuckets = new Map<string, RateBucket>();
 
 export interface AiSessionPayload {
   v: 1;
@@ -77,12 +90,10 @@ export function corsHeaders(req: Request): Record<string, string> {
   const origin = getRequestOrigin(req);
   const headers: Record<string, string> = {
     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "apikey, x-client-info, authorization, content-type, x-kimi-ai-action, x-kimi-ai-session",
+    "Access-Control-Allow-Headers": "apikey, x-client-info, authorization, content-type, x-kimi-ai-action, x-kimi-ai-session, x-kimi-captcha-token, x-kimi-captcha-answer",
     "Cache-Control": "no-store",
     "Vary": "Origin",
   };
-  // Echo the browser origin so rejected requests can read the explicit 403 body.
-  // Access is still enforced by assertAllowedOrigin before any protected work runs.
   if (origin) headers["Access-Control-Allow-Origin"] = origin;
   return headers;
 }
@@ -257,7 +268,155 @@ export async function verifyAiSession(req: Request): Promise<AiSessionPayload> {
     throw new SecurityError(401, "AI_SESSION_EXPIRED", "AI 安全会话已过期，请重新签名");
   }
 
+  assertWalletNotBlocked(payload.wallet);
+
   return payload;
+}
+
+// Wallet blocklist helpers.
+
+function normalizeWallet(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+export function assertWalletNotBlocked(wallet: string): void {
+  const normalized = normalizeWallet(wallet);
+  if (blockedWallets.has(normalized)) {
+    throw new SecurityError(403, "WALLET_BLOCKED", "该钱包已被禁止调用 AI 服务");
+  }
+  const autoBlock = autoBlockedWallets.get(normalized);
+  if (autoBlock && autoBlock.until > Date.now()) {
+    throw new SecurityError(
+      403,
+      "WALLET_AUTO_BLOCKED",
+      `该钱包因频繁调用被临时封禁，${Math.ceil((autoBlock.until - Date.now()) / 1000 / 60)} 分钟后恢复`
+    );
+  }
+}
+
+export function isWalletBlocked(wallet: string): boolean {
+  const normalized = normalizeWallet(wallet);
+  if (blockedWallets.has(normalized)) return true;
+  const autoBlock = autoBlockedWallets.get(normalized);
+  if (autoBlock && autoBlock.until > Date.now()) return true;
+  return false;
+}
+
+/**
+ * Record a strike against a wallet. If it exceeds the threshold within the window,
+ * the wallet is automatically blocked for the configured duration.
+ */
+export function recordWalletStrike(
+  wallet: string,
+  reason: string,
+  options?: { threshold?: number; windowMs?: number; blockDurationMs?: number }
+): void {
+  const normalized = normalizeWallet(wallet);
+  const threshold = options?.threshold ?? readPositiveInt("AUTO_BLOCK_STRIKE_THRESHOLD", 10, 100);
+  const windowMs = options?.windowMs ?? readPositiveInt("AUTO_BLOCK_STRIKE_WINDOW_MS", 60_000, 600_000);
+  const blockDurationMs =
+    options?.blockDurationMs ??
+    readPositiveInt("AUTO_BLOCK_DURATION_MS", 60 * 60_000, 24 * 60 * 60_000);
+
+  const now = Date.now();
+  const bucket = walletStrikeBuckets.get(normalized);
+  if (!bucket || now >= bucket.resetAt) {
+    walletStrikeBuckets.set(normalized, { count: 1, resetAt: now + windowMs });
+    return;
+  }
+
+  bucket.count += 1;
+  if (bucket.count > threshold) {
+    autoBlockedWallets.set(normalized, { until: now + blockDurationMs, reason });
+    console.warn("[ai-security] auto-blocked wallet", { wallet: normalized, reason, until: now + blockDurationMs });
+    walletStrikeBuckets.delete(normalized);
+  }
+
+  if (walletStrikeBuckets.size > 5_000) {
+    for (const [key, value] of walletStrikeBuckets) {
+      if (now >= value.resetAt) walletStrikeBuckets.delete(key);
+    }
+  }
+}
+
+// Simple math CAPTCHA helpers.
+
+let captchaHmacKeyPromise: Promise<CryptoKey> | null = null;
+
+function getCaptchaHmacKey(): Promise<CryptoKey> {
+  if (captchaHmacKeyPromise) return captchaHmacKeyPromise;
+  const secret = Deno.env.get("AI_CAPTCHA_SECRET") || Deno.env.get("AI_SESSION_SECRET") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!secret || secret.length < 32) {
+    throw new SecurityError(503, "CAPTCHA_SECRET_MISSING", "验证码密钥未配置");
+  }
+  captchaHmacKeyPromise = crypto.subtle.importKey(
+    "raw",
+    encoder.encode(`kimi-ai-captcha-v1:${secret}`),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"]
+  );
+  return captchaHmacKeyPromise;
+}
+
+async function signCaptchaToken(token: string): Promise<string> {
+  const key = await getCaptchaHmacKey();
+  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(token));
+  return toBase64Url(new Uint8Array(signature));
+}
+
+function buildCaptchaToken(a: number, b: number, answer: number, expiresAt: number): string {
+  return toBase64Url(encoder.encode(JSON.stringify({ a, b, answer, exp: expiresAt })));
+}
+
+export interface CaptchaChallenge {
+  question: string;
+  token: string;
+}
+
+export async function createCaptchaChallenge(): Promise<CaptchaChallenge> {
+  const a = Math.floor(Math.random() * 9) + 1;
+  const b = Math.floor(Math.random() * 9) + 1;
+  const answer = a + b;
+  const expiresAt = Math.floor(Date.now() / 1000) + 300; // 5 minutes
+  const token = buildCaptchaToken(a, b, answer, expiresAt);
+  const signature = await signCaptchaToken(token);
+  return {
+    question: `${a} + ${b} = ?`,
+    token: `${token}.${signature}`,
+  };
+}
+
+export async function verifyCaptchaAnswer(tokenWithSignature: string, answer: string): Promise<void> {
+  if (typeof answer !== "string" || !/^\d{1,3}$/.test(answer.trim())) {
+    throw new SecurityError(400, "CAPTCHA_ANSWER_INVALID", "请输入正确的验证码答案");
+  }
+  const [tokenPart, signaturePart, extra] = tokenWithSignature.split(".");
+  if (!tokenPart || !signaturePart || extra) {
+    throw new SecurityError(400, "CAPTCHA_TOKEN_INVALID", "验证码令牌无效");
+  }
+
+  let payload: { a: number; b: number; answer: number; exp: number };
+  try {
+    payload = JSON.parse(decoder.decode(fromBase64Url(tokenPart))) as typeof payload;
+    const expectedSignature = await signCaptchaToken(tokenPart);
+    if (!constantTimeEqual(fromBase64Url(signaturePart), expectedSignature)) {
+      throw new SecurityError(400, "CAPTCHA_TOKEN_INVALID", "验证码签名无效");
+    }
+  } catch {
+    throw new SecurityError(400, "CAPTCHA_TOKEN_INVALID", "验证码校验失败");
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  if (!Number.isInteger(payload.exp) || payload.exp <= now) {
+    throw new SecurityError(400, "CAPTCHA_EXPIRED", "验证码已过期，请刷新");
+  }
+  if (!Number.isInteger(payload.a) || !Number.isInteger(payload.b) || !Number.isInteger(payload.answer)) {
+    throw new SecurityError(400, "CAPTCHA_TOKEN_INVALID", "验证码令牌无效");
+  }
+  if (Number(answer.trim()) !== payload.answer) {
+    throw new SecurityError(400, "CAPTCHA_WRONG", "验证码答案错误");
+  }
 }
 
 export function buildWalletAccessMessage(input: {

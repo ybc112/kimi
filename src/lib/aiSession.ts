@@ -75,9 +75,32 @@ function clearAiSession() {
   cachedSession = null;
 }
 
+async function requestCaptcha(): Promise<{ question: string; token: string }> {
+  const { data, error } = await supabase.functions.invoke("deepseek-chat", {
+    body: {},
+    headers: { "x-kimi-ai-action": "request-captcha" },
+  });
+  if (error) {
+    const details = await readFunctionError(error);
+    throw new Error(details.message || "验证码获取失败");
+  }
+  if (typeof data?.question !== "string" || typeof data?.token !== "string") {
+    throw new Error("验证码返回格式无效");
+  }
+  return data as { question: string; token: string };
+}
+
 async function createAiSession(): Promise<CachedAiSession> {
   const ethereum = getEthereumProvider();
   const address = await readConnectedAccount(ethereum, true);
+
+  // Human verification: simple math challenge.
+  const { question, token: captchaToken } = await requestCaptcha();
+  const captchaAnswer = window.prompt(`人机验证：${question}\n请输入答案（数字）`);
+  if (!captchaAnswer || !/^\d{1,3}$/.test(captchaAnswer.trim())) {
+    throw new Error("需要正确输入验证码才能继续使用 AI 功能");
+  }
+
   const browserProvider = new ethers.BrowserProvider(ethereum as ethers.Eip1193Provider);
   const signer = await browserProvider.getSigner(address);
   const origin = window.location.origin.toLowerCase();
@@ -88,7 +111,7 @@ async function createAiSession(): Promise<CachedAiSession> {
   const signature = await signer.signMessage(buildWalletAccessMessage({ origin, address, timestamp, nonce }));
 
   const { data, error } = await supabase.functions.invoke("deepseek-chat", {
-    body: { address, origin, timestamp, nonce, signature },
+    body: { address, origin, timestamp, nonce, signature, captchaToken, captchaAnswer: captchaAnswer.trim() },
     headers: { "x-kimi-ai-action": "create-session" },
   });
   if (error) {

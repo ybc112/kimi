@@ -5,15 +5,17 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import {
   SecurityError,
   assertClientIpAllowed,
+  assertWalletNotBlocked,
   corsHeaders,
   enforceRateLimit,
   jsonResponse,
   readJsonBody,
   readPositiveInt,
+  recordWalletStrike,
   securityErrorResponse,
   verifyAiSession,
 } from "../_shared/ai-security.ts";
-import { handleAiSessionRequest } from "../_shared/ai-session-handler.ts";
+import { handleAiSessionRequest, handleCaptchaRequest } from "../_shared/ai-session-handler.ts";
 
 type ChatMessageInput = { role?: unknown; content?: unknown };
 type ChatRequestBody = {
@@ -69,11 +71,15 @@ serve(async (req) => {
   if (req.headers.get("x-kimi-ai-action") === "create-session") {
     return handleAiSessionRequest(req);
   }
+  if (req.headers.get("x-kimi-ai-action") === "request-captcha") {
+    return handleCaptchaRequest(req);
+  }
   if (req.method !== "POST") return jsonResponse(req, { error: "Method not allowed" }, 405);
 
   try {
     const clientIp = assertClientIpAllowed(req);
     const session = await verifyAiSession(req);
+    assertWalletNotBlocked(session.wallet);
     enforceRateLimit(`deepseek:wallet:${session.wallet}`, CHAT_RATE_PER_MINUTE, 60_000);
     enforceRateLimit(`deepseek:wallet-day:${session.wallet}`, CHAT_RATE_PER_DAY, 24 * 60 * 60_000);
     enforceRateLimit(`deepseek:ip:${clientIp}`, CHAT_IP_RATE_PER_MINUTE, 60_000);
@@ -130,6 +136,18 @@ serve(async (req) => {
     }
     return jsonResponse(req, data as Record<string, unknown>);
   } catch (error) {
+    if (error instanceof SecurityError && error.code === "RATE_LIMITED") {
+      try {
+        const session = await verifyAiSession(req);
+        recordWalletStrike(session.wallet, "deepseek rate limit exceeded", {
+          threshold: 3,
+          windowMs: 60_000,
+          blockDurationMs: 60 * 60_000,
+        });
+      } catch {
+        // ignore session verification errors during error handling
+      }
+    }
     return securityErrorResponse(req, error);
   }
 });
