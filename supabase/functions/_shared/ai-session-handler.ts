@@ -70,7 +70,7 @@ export async function handleCaptchaRequest(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeadersFor(req) });
   try {
     assertAllowedOrigin(req);
-    assertClientIpAllowed(req);
+    await assertClientIpAllowed(req);
     const challenge = await createCaptchaChallenge();
     return jsonResponse(req, challenge);
   } catch (error) {
@@ -95,7 +95,7 @@ export async function handleAiSessionRequest(req: Request): Promise<Response> {
 
   try {
     const origin = assertAllowedOrigin(req);
-    const clientIp = assertClientIpAllowed(req);
+    const clientIp = await assertClientIpAllowed(req);
     // 每个 IP / 钱包创建 session 的频率严格控制，防止恶意地址池轮换刷签名
     enforceRateLimit(`ai-session:ip:${clientIp}`, 5, 60 * 60_000);
 

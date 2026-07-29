@@ -132,11 +132,51 @@ export function getClientIp(req: Request): string {
   );
 }
 
-export function assertClientIpAllowed(req: Request): string {
+const countryCache = new Map<string, { country: string; expiresAt: number }>();
+
+async function lookupCountry(ip: string): Promise<string> {
+  if (ip === "unknown") return "UNKNOWN";
+  if (ip.startsWith("127.") || ip.startsWith("10.") || ip.startsWith("192.168.") || ip.startsWith("172.")) {
+    return "LOCAL";
+  }
+
+  const cached = countryCache.get(ip);
+  if (cached && cached.expiresAt > Date.now()) return cached.country;
+
+  try {
+    const response = await fetch(`https://ipapi.co/${ip}/country/`, {
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (response.ok) {
+      const country = (await response.text()).trim().toUpperCase();
+      countryCache.set(ip, { country, expiresAt: Date.now() + 24 * 60 * 60_000 });
+      return country;
+    }
+  } catch (error) {
+    console.error("[ai-security] country lookup failed", ip, error);
+  }
+  return "UNKNOWN";
+}
+
+export async function assertClientIpAllowed(req: Request): Promise<string> {
   const clientIp = getClientIp(req);
   if (blockedIps.has(clientIp)) {
     throw new SecurityError(403, "IP_BLOCKED", "当前网络已被禁止调用 AI 服务");
   }
+
+  const allowedCountries = Deno.env.get("ALLOWED_COUNTRIES")
+    ?.split(",")
+    .map((value) => value.trim().toUpperCase())
+    .filter(Boolean);
+
+  if (allowedCountries?.length) {
+    const cfCountry = req.headers.get("cf-ipcountry")?.trim().toUpperCase();
+    const country = cfCountry || await lookupCountry(clientIp);
+    if (!allowedCountries.includes(country)) {
+      throw new SecurityError(403, "COUNTRY_BLOCKED", `当前地区（${country}）不允许调用 AI 服务`);
+    }
+  }
+
   return clientIp;
 }
 

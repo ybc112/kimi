@@ -42,7 +42,7 @@ serve(async (req) => {
   if (req.method !== "POST") return jsonResponse(req, { error: "Method not allowed" }, 405);
 
   try {
-    const clientIp = assertClientIpAllowed(req);
+    const clientIp = await assertClientIpAllowed(req);
     const session = await verifyAiSession(req);
     assertWalletNotBlocked(session.wallet);
     enforceRateLimit(`image:wallet:${session.wallet}`, IMAGE_RATE_PER_TEN_MINUTES, 10 * 60_000);

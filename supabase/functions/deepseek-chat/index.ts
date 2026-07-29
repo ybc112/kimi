@@ -77,7 +77,7 @@ serve(async (req) => {
   if (req.method !== "POST") return jsonResponse(req, { error: "Method not allowed" }, 405);
 
   try {
-    const clientIp = assertClientIpAllowed(req);
+    const clientIp = await assertClientIpAllowed(req);
     const session = await verifyAiSession(req);
     assertWalletNotBlocked(session.wallet);
     enforceRateLimit(`deepseek:wallet:${session.wallet}`, CHAT_RATE_PER_MINUTE, 60_000);
