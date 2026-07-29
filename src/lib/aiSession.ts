@@ -92,8 +92,6 @@ async function requestTurnstileToken(): Promise<string> {
     await new Promise<void>((resolve, reject) => {
       const script = document.createElement("script");
       script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
-      script.async = true;
-      script.defer = true;
       script.onload = () => resolve();
       script.onerror = () => reject(new Error("Turnstile 脚本加载失败"));
       document.body.appendChild(script);
