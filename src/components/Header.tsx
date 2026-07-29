@@ -17,6 +17,7 @@ import {
   X,
   MoreHorizontal,
   Zap,
+  Shield,
 } from "lucide-react";
 import { KimiIcon } from "@/components/KimiIcon";
 import { useWallet } from "@/hooks/useWallet";
@@ -31,6 +32,7 @@ const mainNavItems = [
   { to: "/flap-launch", icon: CircleDollarSign, label: "Flap 发币" },
   { to: "/issued-tokens", icon: List, label: "已发代币" },
   { to: "/trending", icon: TrendingUp, label: "热搜榜" },
+  { to: "/token-audit", icon: Shield, label: "安全检测" },
 ];
 
 const moreNavItems = [

@@ -11,8 +11,6 @@ import {
   readPositiveInt,
   securityErrorResponse,
   buildWalletAccessMessage,
-  createCaptchaChallenge,
-  verifyCaptchaAnswer,
 } from "./ai-security.ts";
 
 const KIMI_TOKEN_ADDRESS = "0x9Aa9CADEc931C58c2a22Bbc5381b266d12887777";
@@ -26,8 +24,7 @@ type SessionRequest = {
   timestamp?: unknown;
   nonce?: unknown;
   signature?: unknown;
-  captchaToken?: unknown;
-  captchaAnswer?: unknown;
+  turnstileToken?: unknown;
 };
 
 function getMinimumKimi(): { label: string; amount: bigint } {
@@ -63,18 +60,31 @@ async function getKimiBalance(address: string): Promise<bigint> {
   return BigInt(payload.result);
 }
 
-export async function handleCaptchaRequest(req: Request): Promise<Response> {
-  if (req.method !== "POST" && req.method !== "OPTIONS") {
-    return jsonResponse(req, { error: "Method not allowed" }, 405);
+// Cloudflare Turnstile server-side verification.
+async function verifyTurnstileToken(token: string, clientIp: string): Promise<void> {
+  const turnstileSecret = Deno.env.get("TURNSTILE_SECRET_KEY");
+  if (!turnstileSecret) {
+    throw new SecurityError(503, "TURNSTILE_SECRET_MISSING", "人机验证服务未配置");
   }
-  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeadersFor(req) });
-  try {
-    assertAllowedOrigin(req);
-    await assertClientIpAllowed(req);
-    const challenge = await createCaptchaChallenge();
-    return jsonResponse(req, challenge);
-  } catch (error) {
-    return securityErrorResponse(req, error);
+
+  const verifyResponse = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      secret: turnstileSecret,
+      response: token,
+      remoteip: clientIp,
+    }),
+    signal: AbortSignal.timeout(10_000),
+  });
+
+  const verifyResult = await verifyResponse.json() as {
+    success: boolean;
+    "error-codes"?: string[];
+  };
+  if (!verifyResult.success) {
+    const errorCodes = verifyResult["error-codes"]?.join(", ") || "unknown";
+    throw new SecurityError(403, "TURNSTILE_VERIFY_FAILED", `人机验证失败（${errorCodes}），请重试`);
   }
 }
 
@@ -83,7 +93,7 @@ function corsHeadersFor(req: Request): Record<string, string> {
   return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "apikey, x-client-info, authorization, content-type, x-kimi-ai-action, x-kimi-ai-session, x-kimi-captcha-token, x-kimi-captcha-answer",
+    "Access-Control-Allow-Headers": "apikey, x-client-info, authorization, content-type, x-kimi-ai-action, x-kimi-ai-session",
     "Cache-Control": "no-store",
     "Vary": "Origin",
   };
@@ -101,10 +111,12 @@ export async function handleAiSessionRequest(req: Request): Promise<Response> {
 
     const body = await readJsonBody<SessionRequest>(req, 16_384);
 
-    // CAPTCHA is mandatory for creating an AI session.
-    const captchaToken = typeof body.captchaToken === "string" ? body.captchaToken : "";
-    const captchaAnswer = typeof body.captchaAnswer === "string" ? body.captchaAnswer : "";
-    await verifyCaptchaAnswer(captchaToken, captchaAnswer);
+    // Cloudflare Turnstile human verification is mandatory for creating an AI session.
+    const turnstileToken = typeof body.turnstileToken === "string" ? body.turnstileToken : "";
+    if (!turnstileToken) {
+      throw new SecurityError(400, "TURNSTILE_REQUIRED", "需要完成人机验证才能继续");
+    }
+    await verifyTurnstileToken(turnstileToken, clientIp);
 
     if (typeof body.origin !== "string" || body.origin.trim().toLowerCase() !== origin) {
       throw new SecurityError(403, "ORIGIN_MISMATCH", "签名站点与当前来源不一致");

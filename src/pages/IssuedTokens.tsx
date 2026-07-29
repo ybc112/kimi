@@ -25,6 +25,7 @@ import Empty from "@/components/Empty";
 import { OpenTradingModal } from "@/components/OpenTradingModal";
 import { BSC_CHAIN_ID, BSC_RPC_URL } from "@/lib/contracts/snowball";
 import { readSnowballTradingStatus } from "@/lib/contracts/trading";
+import { KimiScoreBadge } from "@/components/KimiScoreBadge";
 
 const EXPLORERS: Record<string, string> = {
   "BNB Smart Chain": "https://bscscan.com/token",
@@ -308,6 +309,11 @@ export default function IssuedTokens() {
                 </div>
               )}
 
+              <div className="mt-3 flex items-center justify-between rounded-xl border border-[#25282C] bg-[#0A0B0D] px-3 py-2 text-xs">
+                <span className="text-[#6B7280]">安全评分</span>
+                <KimiScoreBadge address={token.address} chainId={token.chainId} />
+              </div>
+
               <div className="mt-4 grid grid-cols-2 gap-3 rounded-xl border border-[#25282C] bg-[#0A0B0D] p-3 text-xs">
                 <div className="col-span-2">
                   <p className="text-[#6B7280]">合约地址</p>
@@ -376,6 +382,7 @@ export default function IssuedTokens() {
                 <th className="px-5 py-4 font-medium">网络</th>
                 <th className="px-5 py-4 font-medium">部署时间</th>
                 <th className="px-5 py-4 font-medium">状态</th>
+                <th className="px-5 py-4 font-medium">安全评分</th>
                 <th className="px-5 py-4 font-medium text-right">操作</th>
               </tr>
             </thead>
@@ -442,19 +449,22 @@ export default function IssuedTokens() {
                           {status.label}
                         </span>
                         {canOpen && (
-                          tradingCheck?.state === "loading" || !tradingCheck ? (
-                            <span className="inline-flex items-center gap-1 text-[11px] text-[#2EDEDB]"><Loader2 className="h-3 w-3 animate-spin" />检查交易状态</span>
-                          ) : tradingCheck.state === "open" || token.tradingOpen ? (
-                            <span className="inline-flex items-center gap-1 text-[11px] text-[#D0FF00]"><Droplets className="h-3 w-3" />已开盘</span>
-                          ) : tradingCheck.state === "error" ? (
-                            <span className="text-[11px] text-[#F59E0B]" title={tradingCheck.error}>交易状态待检查</span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-[11px] text-[#F59E0B]"><Clock className="h-3 w-3" />待开盘</span>
-                          )
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-5 py-4 text-right">
+                      tradingCheck?.state === "loading" || !tradingCheck ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] text-[#2EDEDB]"><Loader2 className="h-3 w-3 animate-spin" />检查交易状态</span>
+                      ) : tradingCheck.state === "open" || token.tradingOpen ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] text-[#D0FF00]"><Droplets className="h-3 w-3" />已开盘</span>
+                      ) : tradingCheck.state === "error" ? (
+                        <span className="text-[11px] text-[#F59E0B]" title={tradingCheck.error}>交易状态待检查</span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[11px] text-[#F59E0B]"><Clock className="h-3 w-3" />待开盘</span>
+                      )
+                    )}
+                  </div>
+                </td>
+                <td className="px-5 py-4">
+                  <KimiScoreBadge address={token.address} chainId={token.chainId} />
+                </td>
+                <td className="px-5 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
                         {canOpen && (
                           <button

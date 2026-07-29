@@ -13,6 +13,7 @@ const MemeLaunch = lazy(() => import("@/pages/MemeLaunch"));
 const FlapLaunch = lazy(() => import("@/pages/FlapLaunch"));
 const IssuedTokens = lazy(() => import("@/pages/IssuedTokens"));
 const PageBuilder = lazy(() => import("@/pages/PageBuilder"));
+const TokenAudit = lazy(() => import("@/pages/TokenAudit"));
 
 function PageLoading() {
   return (
@@ -40,6 +41,7 @@ export default function App() {
             <Route path="/logs" element={<Logs />} />
             <Route path="/trending" element={<Trending />} />
             <Route path="/page-builder" element={<PageBuilder />} />
+            <Route path="/token-audit" element={<TokenAudit />} />
           </Routes>
         </Suspense>
       </Layout>

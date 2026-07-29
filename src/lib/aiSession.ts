@@ -20,6 +20,8 @@ type FunctionErrorDetails = {
 
 let cachedSession: CachedAiSession | null = null;
 
+const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY || "0x4AAAAAAEA7WVFlZhIoQBiO";
+
 function getEthereumProvider(): EthereumProvider {
   const ethereum = (window as Window & { ethereum?: EthereumProvider }).ethereum;
   if (!ethereum) throw new Error("请先安装并打开支持 BSC 的钱包");
@@ -75,31 +77,56 @@ function clearAiSession() {
   cachedSession = null;
 }
 
-async function requestCaptcha(): Promise<{ question: string; token: string }> {
-  const { data, error } = await supabase.functions.invoke("deepseek-chat", {
-    body: {},
-    headers: { "x-kimi-ai-action": "request-captcha" },
+// Cloudflare Turnstile invisible token acquisition.
+// Loads the Turnstile script once and executes an invisible challenge.
+async function requestTurnstileToken(): Promise<string> {
+  const turnstileWindow = window as Window & {
+    turnstile?: {
+      ready: (callback: () => void) => void;
+      execute: (siteKey: string, options: { action?: string; callback: (token: string) => void }) => void;
+      reset?: (widgetId?: string) => void;
+    };
+  };
+
+  if (!turnstileWindow.turnstile) {
+    await new Promise<void>((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+      script.async = true;
+      script.defer = true;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error("Turnstile 脚本加载失败"));
+      document.body.appendChild(script);
+    });
+  }
+
+  const turnstile = turnstileWindow.turnstile;
+  if (!turnstile) throw new Error("Turnstile 初始化失败");
+
+  await new Promise<void>((resolve) => turnstile.ready(() => resolve()));
+
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("Turnstile 验证超时，请重试")), 30_000);
+    turnstile.execute(TURNSTILE_SITE_KEY, {
+      action: "kimi-ai-session",
+      callback: (token: string) => {
+        clearTimeout(timeout);
+        if (!token) {
+          reject(new Error("Turnstile 验证失败，请刷新页面重试"));
+        } else {
+          resolve(token);
+        }
+      },
+    });
   });
-  if (error) {
-    const details = await readFunctionError(error);
-    throw new Error(details.message || "验证码获取失败");
-  }
-  if (typeof data?.question !== "string" || typeof data?.token !== "string") {
-    throw new Error("验证码返回格式无效");
-  }
-  return data as { question: string; token: string };
 }
 
 async function createAiSession(): Promise<CachedAiSession> {
   const ethereum = getEthereumProvider();
   const address = await readConnectedAccount(ethereum, true);
 
-  // Human verification: simple math challenge.
-  const { question, token: captchaToken } = await requestCaptcha();
-  const captchaAnswer = window.prompt(`人机验证：${question}\n请输入答案（数字）`);
-  if (!captchaAnswer || !/^\d{1,3}$/.test(captchaAnswer.trim())) {
-    throw new Error("需要正确输入验证码才能继续使用 AI 功能");
-  }
+  // Cloudflare Turnstile human verification.
+  const turnstileToken = await requestTurnstileToken();
 
   const browserProvider = new ethers.BrowserProvider(ethereum as ethers.Eip1193Provider);
   const signer = await browserProvider.getSigner(address);
@@ -111,7 +138,7 @@ async function createAiSession(): Promise<CachedAiSession> {
   const signature = await signer.signMessage(buildWalletAccessMessage({ origin, address, timestamp, nonce }));
 
   const { data, error } = await supabase.functions.invoke("deepseek-chat", {
-    body: { address, origin, timestamp, nonce, signature, captchaToken, captchaAnswer: captchaAnswer.trim() },
+    body: { address, origin, timestamp, nonce, signature, turnstileToken },
     headers: { "x-kimi-ai-action": "create-session" },
   });
   if (error) {

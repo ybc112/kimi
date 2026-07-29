@@ -99,3 +99,52 @@ export interface ToastState {
   message: string;
   duration?: number;
 }
+
+/** 审计结果等级 */
+export type AuditSeverity = "critical" | "high" | "medium" | "low" | "info";
+
+/** 单条审计发现 */
+export interface AuditFinding {
+  rule: string;
+  severity: AuditSeverity;
+  message: string;
+  suggestion: string;
+  line?: number;
+}
+
+/** Solidity 静态审计报告 */
+export interface AuditReport {
+  score: number;
+  findings: AuditFinding[];
+  passed: boolean;
+  summary: string;
+  checkedAt: number;
+}
+
+/** 代币安全评分维度 */
+export interface TokenSafetyDimension {
+  name: string;
+  pass: boolean;
+  score: number;
+  message: string;
+}
+
+/** 代币安全 / Honeypot 检测报告 */
+export interface TokenSafetyReport {
+  address: string;
+  score: number;
+  isHoneypot: boolean | null;
+  canSell: boolean | null;
+  owner: string;
+  ownerRenounced: boolean;
+  hasMintFunction: boolean;
+  hasBlacklist: boolean;
+  hasWhitelist: boolean;
+  taxChangeable: boolean | null;
+  buyTaxBp: number | null;
+  sellTaxBp: number | null;
+  lpLockedOrBurned: boolean | null;
+  dimensions: TokenSafetyDimension[];
+  warnings: string[];
+  checkedAt: number;
+}

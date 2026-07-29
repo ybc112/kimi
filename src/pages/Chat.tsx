@@ -32,6 +32,8 @@ import { SyntaxHighlighter, vscDarkPlus } from "@/lib/syntaxHighlighter";
 import { cn } from "@/lib/utils";
 import { safeRemoveItem, safeSetItem } from "@/lib/storage";
 import { AiSecurityNotice } from "@/components/AiSecurityNotice";
+import { AuditReportPanel } from "@/components/AuditReportPanel";
+import type { AuditReport } from "@/types";
 
 const vaultTypes = [
   { value: "mint-treasury", label: "Mint Treasury", mode: "Mint", icon: Box },
@@ -77,6 +79,7 @@ export default function Chat() {
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [auditReport, setAuditReport] = useState<AuditReport | null>(null);
 
   const [params, setParams] = useState({
     projectName: "",
@@ -196,6 +199,7 @@ export default function Chat() {
 
       const code = extractCode(content);
       setGeneratedCode(code);
+      setAuditReport(null);
       safeSetItem("flap-generated-code", code);
       recordGenerate();
 
@@ -281,6 +285,7 @@ export default function Chat() {
     });
     setPrompt("");
     setGeneratedCode("");
+    setAuditReport(null);
     safeRemoveItem("flap-generated-code");
     setParams({
       projectName: "",
@@ -663,7 +668,12 @@ export default function Chat() {
               </button>
               <button
                 onClick={() => navigate("/deploy")}
-                disabled={!generatedCode}
+                disabled={!generatedCode || !auditReport?.passed}
+                title={
+                  generatedCode && !auditReport?.passed
+                    ? "请先通过右侧 AI 合约审计（分数 ≥ 70 且无 critical/high 问题）"
+                    : ""
+                }
                 className="kimi-btn-primary py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Rocket className="h-3.5 w-3.5" />
@@ -751,6 +761,8 @@ export default function Chat() {
                   {selectedType?.mode || "Custom"}
                 </div>
               </div>
+
+              <AuditReportPanel code={generatedCode} required onAudit={setAuditReport} />
 
               <div className="rounded-xl border border-[#25282C] bg-[#111215] p-3">
                 <div className="mb-2 flex items-start gap-2">

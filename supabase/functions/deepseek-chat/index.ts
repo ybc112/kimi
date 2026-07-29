@@ -15,7 +15,7 @@ import {
   securityErrorResponse,
   verifyAiSession,
 } from "../_shared/ai-security.ts";
-import { handleAiSessionRequest, handleCaptchaRequest } from "../_shared/ai-session-handler.ts";
+import { handleAiSessionRequest } from "../_shared/ai-session-handler.ts";
 
 type ChatMessageInput = { role?: unknown; content?: unknown };
 type ChatRequestBody = {
@@ -70,9 +70,6 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(req) });
   if (req.headers.get("x-kimi-ai-action") === "create-session") {
     return handleAiSessionRequest(req);
-  }
-  if (req.headers.get("x-kimi-ai-action") === "request-captcha") {
-    return handleCaptchaRequest(req);
   }
   if (req.method !== "POST") return jsonResponse(req, { error: "Method not allowed" }, 405);
 
