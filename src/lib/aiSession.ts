@@ -83,7 +83,10 @@ async function requestTurnstileToken(): Promise<string> {
   const turnstileWindow = window as Window & {
     turnstile?: {
       ready: (callback: () => void) => void;
-      execute: (siteKey: string, options: { action?: string; callback: (token: string) => void }) => void;
+      execute: (
+        container: string | HTMLElement,
+        options: { sitekey: string; action?: string; callback: (token: string) => void }
+      ) => string;
       reset?: (widgetId?: string) => void;
     };
   };
@@ -107,9 +110,24 @@ async function requestTurnstileToken(): Promise<string> {
 
   await new Promise<void>((resolve) => turnstile.ready(() => resolve()));
 
+  // Invisible challenge container. Must be an actual HTMLElement; the first
+  // argument to turnstile.execute() is the container, not the site key.
+  let container = document.getElementById("kimi-turnstile-container");
+  if (!container) {
+    container = document.createElement("div");
+    container.id = "kimi-turnstile-container";
+    container.style.position = "absolute";
+    container.style.width = "0";
+    container.style.height = "0";
+    container.style.overflow = "hidden";
+    container.style.visibility = "hidden";
+    document.body.appendChild(container);
+  }
+
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error("Turnstile 验证超时，请重试")), 30_000);
-    turnstile.execute(TURNSTILE_SITE_KEY, {
+    turnstile.execute(container, {
+      sitekey: TURNSTILE_SITE_KEY,
       action: "kimi-ai-session",
       callback: (token: string) => {
         clearTimeout(timeout);
