@@ -308,7 +308,7 @@ contract KimiMintToken is ERC20, Ownable {
 
     uint16 public constant BPS_DENOMINATOR = 10_000;
     uint16 public constant MAX_TAX_BPS = 2_500;
-    uint16 public constant PLATFORM_TAX_SHARE_BPS = 1_000;
+    uint16 public constant PLATFORM_TAX_SHARE_BPS = 0;
     address public constant LP_BLACK_HOLE = 0x000000000000000000000000000000000000dEaD;
 
     string public projectUri;
