@@ -27,6 +27,7 @@ import {
   initialAdvancedTax,
   initialMintAllocation,
   initialMintForm,
+  mintCreationFeeLabel,
   MINT_BNB_CHAIN,
   MINT_USDT_ADDRESS,
   mintTemplates,
@@ -376,7 +377,7 @@ export default function MintLaunch() {
             <div className={sectionTitle}>
               <span className={sectionNumber}>01</span>
               基础信息
-              <span className="ml-auto text-xs font-normal text-[#6B7280]">部署费 0.005 BNB</span>
+              <span className="ml-auto text-xs font-normal text-[#6B7280]">部署费 {mintCreationFeeLabel}</span>
             </div>
             <p className="mt-1 text-xs text-[#9CA3AF]">填写名称、符号、头像和项目简介。</p>
 

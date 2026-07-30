@@ -50,39 +50,41 @@ export const initialAdvancedTax = {
   claimWaitSeconds: "60",
 };
 
+export const mintCreationFeeLabel = "10,000 KIMI";
+
 export const mintTemplates: MintLaunchTemplate[] = [
   {
     id: "standard",
-    name: "PEPE Mint",
+    name: "KimiMint Core",
     tag: "Core",
-    fee: "0.005 BNB",
+    fee: mintCreationFeeLabel,
     summary: "创建独立 ERC20 和独立 Vault，用户按次数公开 mint，适合快速启动社区资产。",
     bestFor: "社区首发、活动票券、轻量资产发行",
     checks: ["固定发行量", "公开 mint 次数", "独立 Vault", "创建者接收钱包"],
   },
   {
     id: "time",
-    name: "Timed Orchard",
+    name: "KimiMint Time",
     tag: "Time",
-    fee: "0.005 BNB",
+    fee: mintCreationFeeLabel,
     summary: "为预热、排队和分批开放保留参数入口，方便后续扩展白名单和开盘时间。",
     bestFor: "预热活动、排队发射、分批开放",
     checks: ["开放时间", "冷却窗口", "进度追踪", "公开参数"],
   },
   {
     id: "buyback",
-    name: "Buyback Core",
+    name: "KimiMint Buyback",
     tag: "Flow",
-    fee: "0.005 BNB",
+    fee: mintCreationFeeLabel,
     summary: "税收拆分可映射到基金、回流、奖励和销毁，适合长期运营型项目。",
     bestFor: "交易税玩法、持续运营、回购叙事",
     checks: ["买卖税", "基金分配", "销毁比例", "接收钱包"],
   },
   {
     id: "nftReward",
-    name: "Reward Grove",
+    name: "KimiMint Reward",
     tag: "Reward",
-    fee: "0.005 BNB",
+    fee: mintCreationFeeLabel,
     summary: "记录奖励代币和持仓门槛，便于后续扩展 NFT、任务或会员奖励。",
     bestFor: "任务制社区、持仓奖励、游戏化发行",
     checks: ["奖励代币", "门槛记录", "模板 ID", "后续升级"],

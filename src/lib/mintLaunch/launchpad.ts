@@ -13,6 +13,7 @@ import {
   randomBytes,
   type Signer,
 } from "ethers";
+import { KIMI_TOKEN_ADDRESS } from "@/lib/contracts/kimiToken";
 import { MINT_BNB_CHAIN, MINT_USDT_ADDRESS } from "./data";
 import type {
   MintLaunchDraft,
@@ -25,18 +26,27 @@ const configuredVanitySuffix = String(import.meta.env.VITE_MINT_VANITY_SUFFIX ??
   .trim()
   .replace(/^0x/i, "")
   .toLowerCase();
-const DEFAULT_APP_BACKEND_URL = "https://154.12.118.163.sslip.io";
+const DEFAULT_APP_BACKEND_URL = "same-origin";
 const configuredBackendUrl =
   String(import.meta.env.VITE_MINT_BACKEND_URL ?? "").trim() || DEFAULT_APP_BACKEND_URL;
 
 export const DEFAULT_MINT_FACTORY_ADDRESS = "0x988Cf7cb0b2AB68340769449850d8Bdf2a40DfB2";
-const DEFAULT_CREATION_FEE_WEI = "5000000000000000";
+export const DEFAULT_MINT_FEE_RECIPIENT = "0xc5c848Dc65d004Adc1c9DC54BBb3b3bB7084C1E9";
+const DEFAULT_CREATION_FEE_KIMI = "10000";
+const KIMI_DECIMALS = 18;
 
 export const mintLaunchpadConfig = {
   chainId: Number(import.meta.env.VITE_MINT_CHAIN_ID ?? 56),
   factoryAddress:
     String(import.meta.env.VITE_MINT_FACTORY_ADDRESS ?? "").trim() || DEFAULT_MINT_FACTORY_ADDRESS,
-  creationFeeWei: String(import.meta.env.VITE_MINT_CREATION_FEE_WEI ?? DEFAULT_CREATION_FEE_WEI),
+  creationFeeToken:
+    String(import.meta.env.VITE_MINT_CREATION_FEE_TOKEN ?? "").trim() || KIMI_TOKEN_ADDRESS,
+  creationFeeAmount: parseUnits(
+    String(import.meta.env.VITE_MINT_CREATION_FEE_KIMI ?? DEFAULT_CREATION_FEE_KIMI),
+    KIMI_DECIMALS,
+  ),
+  feeRecipient:
+    String(import.meta.env.VITE_MINT_FEE_RECIPIENT ?? "").trim() || DEFAULT_MINT_FEE_RECIPIENT,
   backendUrl: normalizeBackendBaseUrl(configuredBackendUrl),
   vanitySuffix: configuredVanitySuffix && configuredVanitySuffix !== "eeee" ? configuredVanitySuffix : "eeee",
 };
@@ -187,6 +197,14 @@ const messages = {
   vanityUnavailable: "本次没有匹配到 EEEE 靓号地址，请重新点击部署再试一次。",
 };
 
+const erc20Abi = [
+  "function approve(address spender,uint256 amount) returns (bool)",
+  "function allowance(address owner,address spender) view returns (uint256)",
+  "function balanceOf(address account) view returns (uint256)",
+  "function transfer(address to,uint256 amount) returns (bool)",
+  "function decimals() view returns (uint8)",
+] as const;
+
 export async function createMintLaunchToken(
   signer: Signer,
   draft: MintLaunchDraft,
@@ -207,9 +225,21 @@ export async function createMintLaunchToken(
   const salt = vanity.salt;
 
   const factory = new Contract(mintLaunchpadConfig.factoryAddress, launchFactoryAbi, signer);
-  const creationFee = BigInt(mintLaunchpadConfig.creationFeeWei);
 
-  const tx = await factory.createLaunch(params, salt, { value: creationFee });
+  // Approve KIMI creation fee before calling factory
+  if (mintLaunchpadConfig.creationFeeAmount > 0n) {
+    const feeToken = new Contract(mintLaunchpadConfig.creationFeeToken, erc20Abi, signer);
+    const currentAllowance = BigInt(await feeToken.allowance(from, mintLaunchpadConfig.factoryAddress));
+    if (currentAllowance < mintLaunchpadConfig.creationFeeAmount) {
+      const approveTx = await feeToken.approve(
+        mintLaunchpadConfig.factoryAddress,
+        mintLaunchpadConfig.creationFeeAmount,
+      );
+      await approveTx.wait();
+    }
+  }
+
+  const tx = await factory.createLaunch(params, salt);
   await tx.wait();
 
   return {

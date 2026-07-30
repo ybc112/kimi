@@ -31,6 +31,7 @@ const mainNavItems = [
   { to: "/deploy", icon: Rocket, label: "合约部署" },
   { to: "/flap-launch", icon: CircleDollarSign, label: "Flap 发币" },
   { to: "/mint-launch", icon: Rocket, label: "Mint 发射台" },
+  { to: "/mint-launches", icon: List, label: "Mint 已发射" },
   { to: "/issued-tokens", icon: List, label: "已发代币" },
   { to: "/trending", icon: TrendingUp, label: "热搜榜" },
   { to: "/token-audit", icon: Shield, label: "安全检测" },
