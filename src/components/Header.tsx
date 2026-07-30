@@ -256,7 +256,7 @@ export function Header() {
       {mobileOpen && (
         <div className="fixed inset-0 z-50 xl:hidden">
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
-          <aside className="absolute right-0 top-0 h-full w-80 border-l border-[#25282C] bg-[#111215]">
+          <aside className="absolute right-0 top-0 flex h-full w-80 flex-col border-l border-[#25282C] bg-[#111215]">
             <div className="flex items-center justify-between border-b border-[#25282C] px-5 py-4">
               <div className="flex items-center gap-3">
                 <KimiIcon size={32} className="h-8 w-8 rounded-xl" />
@@ -269,7 +269,7 @@ export function Header() {
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <nav className="p-3">
+            <nav className="flex-1 overflow-y-auto p-3">
               <ul className="space-y-1">
                 {[...mainNavItems, ...moreNavItems].map((item) => (
                   <li key={item.to}>
@@ -292,7 +292,7 @@ export function Header() {
                 ))}
               </ul>
             </nav>
-            <div className="absolute bottom-0 left-0 right-0 border-t border-[#25282C] p-4">
+            <div className="border-t border-[#25282C] p-4">
               <div className="flex items-center justify-between text-xs text-[#6B7280]">
                 <span>v1.0</span>
                 <span className="flex items-center gap-1.5">
