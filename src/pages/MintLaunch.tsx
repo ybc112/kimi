@@ -307,8 +307,8 @@ export default function MintLaunch() {
             )}
           </div>
           <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
-            <button className="kimi-btn-primary" onClick={() => navigate("/issued-tokens")}>
-              查看已发代币
+            <button className="kimi-btn-primary" onClick={() => navigate("/mint-launches")}>
+              查看 Mint 已发射
             </button>
             <button className="kimi-btn-secondary" onClick={() => setResult(null)}>
               继续部署
