@@ -14,6 +14,7 @@ const FlapLaunch = lazy(() => import("@/pages/FlapLaunch"));
 const IssuedTokens = lazy(() => import("@/pages/IssuedTokens"));
 const PageBuilder = lazy(() => import("@/pages/PageBuilder"));
 const TokenAudit = lazy(() => import("@/pages/TokenAudit"));
+const MintLaunch = lazy(() => import("@/pages/MintLaunch"));
 
 function PageLoading() {
   return (
@@ -42,6 +43,7 @@ export default function App() {
             <Route path="/trending" element={<Trending />} />
             <Route path="/page-builder" element={<PageBuilder />} />
             <Route path="/token-audit" element={<TokenAudit />} />
+            <Route path="/mint-launch" element={<MintLaunch />} />
           </Routes>
         </Suspense>
       </Layout>
