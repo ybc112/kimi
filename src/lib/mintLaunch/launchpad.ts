@@ -48,7 +48,7 @@ export const mintLaunchpadConfig = {
   feeRecipient:
     String(import.meta.env.VITE_MINT_FEE_RECIPIENT ?? "").trim() || DEFAULT_MINT_FEE_RECIPIENT,
   backendUrl: normalizeBackendBaseUrl(configuredBackendUrl),
-  vanitySuffix: configuredVanitySuffix && configuredVanitySuffix !== "eeee" ? configuredVanitySuffix : "eeee",
+  vanitySuffix: configuredVanitySuffix || "7777",
 };
 
 const MAX_ONCHAIN_METADATA_BYTES = 4_096;
