@@ -209,6 +209,8 @@ const messages = {
   insufficientNativeBalance: (required: string, balance: string) =>
     `钱包 BNB 不足：预计至少需要 ${required} BNB，当前余额 ${balance} BNB。`,
   vanityUnavailable: "本次没有匹配到 EEEE 靓号地址，请重新点击部署再试一次。",
+  insufficientKimiBalance: (required: string, balance: string) =>
+    `KIMI 余额不足：创建代币需要 ${required} KIMI，当前余额 ${balance} KIMI。`,
 };
 
 const erc20Abi = [
@@ -243,7 +245,17 @@ export async function createMintLaunchToken(
   // Approve KIMI creation fee before calling factory
   if (mintLaunchpadConfig.creationFeeAmount > 0n) {
     const feeToken = new Contract(mintLaunchpadConfig.creationFeeToken, erc20Abi, signer);
-    const currentAllowance = BigInt(await feeToken.allowance(from, mintLaunchpadConfig.factoryAddress));
+    const [currentAllowance, currentBalance] = await Promise.all([
+      feeToken.allowance(from, mintLaunchpadConfig.factoryAddress).then((value: unknown) => BigInt(String(value))),
+      feeToken.balanceOf(from).then((value: unknown) => BigInt(String(value))),
+    ]);
+
+    if (currentBalance < mintLaunchpadConfig.creationFeeAmount) {
+      const requiredKimi = formatUnits(mintLaunchpadConfig.creationFeeAmount, KIMI_DECIMALS);
+      const balanceKimi = formatUnits(currentBalance, KIMI_DECIMALS);
+      throw new Error(messages.insufficientKimiBalance(requiredKimi, balanceKimi));
+    }
+
     if (currentAllowance < mintLaunchpadConfig.creationFeeAmount) {
       const approveTx = await feeToken.approve(
         mintLaunchpadConfig.factoryAddress,
