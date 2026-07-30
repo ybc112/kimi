@@ -60,6 +60,20 @@ const TRADING_ENABLED_EVENT_TOPIC = id("TradingEnabled()");
 export const isMintLaunchpadConfigured =
   Boolean(mintLaunchpadConfig.factoryAddress) && isAddress(mintLaunchpadConfig.factoryAddress);
 
+export async function getMintReadProvider(): Promise<JsonRpcProvider> {
+  const errors: string[] = [];
+  for (const url of MINT_BNB_CHAIN.rpcUrls) {
+    try {
+      const provider = new JsonRpcProvider(url, mintLaunchpadConfig.chainId);
+      await provider.getBlockNumber();
+      return provider;
+    } catch (err) {
+      errors.push(`${url}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  throw new Error(`All BSC RPC endpoints failed:\n${errors.join("\n")}`);
+}
+
 export const launchFactoryAbi = [
   "function createLaunch((string name,string symbol,string metadataUri,uint256 totalSupply,uint256 mintCount,uint256 mintPrice,uint256 maxMintPerWallet,address paymentToken,address rewardToken,uint256 rewardThreshold,address receiver,bytes32 templateId,uint16 buyTaxBps,uint16 sellTaxBps,uint16 transferTaxBps,uint16 addLiquidityTaxBps,uint16 removeLiquidityTaxBps,uint16 launchProtectionTaxBps,uint16 launchProtectionBlocks,uint32 claimWait,uint16 fundFeeBps,uint16 lpFeeBps,uint16 dividendFeeBps,uint16 burnFeeBps,uint256 whitelistMintCount,bool whitelistEnabled) params, bytes32 salt) payable returns (address token, address vault)",
   "function allTokensLength() view returns (uint256)",
@@ -402,7 +416,7 @@ export async function fetchMintLaunchProjects(account = ""): Promise<MintLaunchP
     return [];
   }
 
-  const provider = new JsonRpcProvider(MINT_BNB_CHAIN.rpcUrls[0], mintLaunchpadConfig.chainId);
+  const provider = await getMintReadProvider();
   const factory = new Contract(mintLaunchpadConfig.factoryAddress, launchFactoryAbi, provider);
   const count = Number(await factory.allTokensLength());
   const start = Math.max(0, count - 24);
@@ -561,7 +575,7 @@ export async function fetchMintLaunchProjects(account = ""): Promise<MintLaunchP
   return projects;
 }
 
-export function watchMintLaunchProjectEvents(projects: MintLaunchProject[], onUpdate: () => void) {
+export async function watchMintLaunchProjectEvents(projects: MintLaunchProject[], onUpdate: () => void) {
   const watchableProjects = projects.filter(
     (project) => !project.finalized && isAddress(project.vault) && isAddress(project.token),
   );
@@ -570,7 +584,7 @@ export function watchMintLaunchProjectEvents(projects: MintLaunchProject[], onUp
     return () => {};
   }
 
-  const provider = new JsonRpcProvider(MINT_BNB_CHAIN.rpcUrls[0], mintLaunchpadConfig.chainId);
+  const provider = await getMintReadProvider();
   provider.pollingInterval = 3_000;
   const listeners: Array<{ filter: { address: string; topics: string[] }; handler: () => void }> = [];
   let refreshTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
