@@ -54,11 +54,15 @@ const avatarMaxSourceBytes = 1024 * 1024;
 const avatarCanvasSize = 256;
 
 const sectionCard =
-  "rounded-2xl border border-[#25282C] bg-[#111215] p-5 lg:p-6 transition-all duration-200";
+  "rounded-2xl border border-[#25282C] bg-[#111215]/80 p-5 lg:p-6 transition-all duration-200 hover:border-[#303236]";
+const sectionCardGlow =
+  "relative overflow-hidden before:absolute before:inset-0 before:rounded-2xl before:bg-gradient-to-br before:from-[#D0FF00]/5 before:via-transparent before:to-[#2EDEDB]/5 before:pointer-events-none";
 const sectionTitle = "flex items-center gap-2 text-base font-semibold text-white";
 const sectionNumber =
   "flex h-5 w-5 items-center justify-center rounded-md bg-[#D0FF00]/15 text-[11px] font-bold text-[#D0FF00]";
 const labelClass = "mb-1.5 block text-xs font-medium text-[#9CA3AF]";
+const gradientText =
+  "bg-gradient-to-r from-[#D0FF00] via-[#E8FF5C] to-[#2EDEDB] bg-clip-text text-transparent";
 
 function shortAddress(address: string) {
   return address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "";
@@ -271,21 +275,23 @@ export default function MintLaunch() {
   if (result) {
     return (
       <div className="page-fade-in mx-auto max-w-3xl px-4 py-10">
-        <div className={cn(sectionCard, "text-center")}>
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#D0FF00]/10">
-            <Rocket className="h-7 w-7 text-[#D0FF00]" />
+        <div className={cn(sectionCard, sectionCardGlow, "text-center")}>
+          <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-[#D0FF00]/20 to-[#2EDEDB]/10 ring-1 ring-[#D0FF00]/20">
+            <Rocket className="h-9 w-9 text-[#D0FF00]" />
           </div>
-          <h2 className="text-xl font-bold text-white">发射成功</h2>
-          <p className="mt-1 text-sm text-[#9CA3AF]">你的代币和金库已经部署到 BNB Smart Chain</p>
+          <h2 className="text-2xl font-bold text-white">KimiMint 发射成功</h2>
+          <p className="mt-2 text-sm text-[#9CA3AF]">
+            你的代币和金库已经部署到 BNB Smart Chain
+          </p>
           <div className="mt-6 space-y-3 text-left">
-            <div className="rounded-xl bg-[#0A0B0D] p-4">
+            <div className="rounded-xl border border-[#25282C] bg-[#0A0B0D] p-4">
               <span className="text-xs text-[#9CA3AF]">交易哈希</span>
               <div className="mt-1 flex items-center gap-2 break-all font-mono text-xs text-white">
                 {result.hash}
               </div>
             </div>
             {result.token && (
-              <div className="rounded-xl bg-[#0A0B0D] p-4">
+              <div className="rounded-xl border border-[#25282C] bg-[#0A0B0D] p-4">
                 <span className="text-xs text-[#9CA3AF]">代币合约</span>
                 <div className="mt-1 flex items-center gap-2 break-all font-mono text-xs text-white">
                   {result.token}
@@ -293,7 +299,7 @@ export default function MintLaunch() {
               </div>
             )}
             {result.predicted && (
-              <div className="rounded-xl bg-[#0A0B0D] p-4">
+              <div className="rounded-xl border border-[#25282C] bg-[#0A0B0D] p-4">
                 <span className="text-xs text-[#9CA3AF]">预测地址</span>
                 <div className="mt-1 break-all font-mono text-xs text-white">{result.predicted}</div>
               </div>
@@ -315,21 +321,26 @@ export default function MintLaunch() {
   return (
     <div className="page-fade-in mx-auto max-w-7xl px-4 py-6 lg:py-8">
       {/* Hero / status strip */}
-      <section className={cn(sectionCard, "mb-6 flex flex-col gap-4 lg:flex-row lg:items-center")}>
+      <section className={cn(sectionCard, sectionCardGlow, "mb-6 flex flex-col gap-5 lg:flex-row lg:items-center")}>
         <div className="flex items-start gap-4 lg:flex-1">
           <div
             className={cn(
-              "mt-1 h-3 w-3 rounded-full border-2 border-[#111215] shadow-sm",
-              wallet.isConnected && wallet.isBSC ? "bg-[#D0FF00]" : "bg-[#6B7280]",
+              "mt-1.5 h-3 w-3 shrink-0 rounded-full border-2 border-[#111215] shadow-[0_0_8px_currentColor]",
+              wallet.isConnected && wallet.isBSC ? "bg-[#D0FF00] text-[#D0FF00]" : "bg-[#6B7280] text-[#6B7280]",
             )}
           />
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Rocket className="h-5 w-5 text-[#D0FF00]" />
-              <h1 className="text-xl font-bold text-white lg:text-2xl">Mint 发射台</h1>
+              <h1 className={cn("text-2xl font-black tracking-tight lg:text-3xl", gradientText)}>
+                KimiMint
+              </h1>
+              <span className="rounded-md bg-[#D0FF00]/10 px-2 py-0.5 text-[10px] font-bold text-[#D0FF00]">
+                LAUNCH
+              </span>
             </div>
-            <p className="mt-1 text-sm text-[#9CA3AF]">
-              创建独立 ERC20 和 Mint 金库，配置铸造、税收、奖励和接收钱包
+            <p className="mt-1.5 text-sm text-[#9CA3AF]">
+              在 KimiMint 上创建独立 ERC20 和 Mint 金库，配置铸造、税收、奖励和接收钱包
             </p>
             <p className="mt-1 text-xs text-[#6B7280]">
               {wallet.isConnected
@@ -343,7 +354,7 @@ export default function MintLaunch() {
           {statusItems.map((item) => (
             <div
               key={item.label}
-              className="rounded-xl border border-[#25282C] bg-[#0A0B0D] p-3 text-center"
+              className="rounded-xl border border-[#25282C] bg-[#0A0B0D]/80 p-3 text-center transition-colors hover:border-[#D0FF00]/20"
             >
               <div className="text-xs text-[#6B7280]">{item.label}</div>
               <div className="mt-1 text-sm font-bold text-white">{item.value}</div>
@@ -352,10 +363,7 @@ export default function MintLaunch() {
         </div>
 
         {wallet.isConnected && !wallet.isBSC && (
-          <button
-            className="kimi-btn-primary shrink-0"
-            onClick={wallet.switchToBSC}
-          >
+          <button className="kimi-btn-primary shrink-0" onClick={wallet.switchToBSC}>
             切换网络
           </button>
         )}
@@ -364,7 +372,7 @@ export default function MintLaunch() {
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <div className="space-y-5">
           {/* 01 Basic info */}
-          <section className={sectionCard}>
+          <section className={cn(sectionCard, sectionCardGlow)}>
             <div className={sectionTitle}>
               <span className={sectionNumber}>01</span>
               基础信息
@@ -463,7 +471,7 @@ export default function MintLaunch() {
           </section>
 
           {/* 02 Templates */}
-          <section className={sectionCard}>
+          <section className={cn(sectionCard, sectionCardGlow)}>
             <div className={sectionTitle}>
               <span className={sectionNumber}>02</span>
               选择合约模板
@@ -506,7 +514,7 @@ export default function MintLaunch() {
           </section>
 
           {/* 03 Mint config */}
-          <section className={sectionCard}>
+          <section className={cn(sectionCard, sectionCardGlow)}>
             <div className={sectionTitle}>
               <span className={sectionNumber}>03</span>
               Mint 配置
@@ -606,7 +614,7 @@ export default function MintLaunch() {
           </section>
 
           {/* 04 Tax */}
-          <section className={sectionCard}>
+          <section className={cn(sectionCard, sectionCardGlow)}>
             <div className={sectionTitle}>
               <span className={sectionNumber}>04</span>
               买卖税与四项分配
@@ -745,7 +753,7 @@ export default function MintLaunch() {
           </section>
 
           {/* 05 Receiver */}
-          <section className={sectionCard}>
+          <section className={cn(sectionCard, sectionCardGlow)}>
             <div className={sectionTitle}>
               <span className={sectionNumber}>05</span>
               接收与分红
@@ -786,7 +794,7 @@ export default function MintLaunch() {
           </section>
 
           {/* 06 Links */}
-          <section className={sectionCard}>
+          <section className={cn(sectionCard, sectionCardGlow)}>
             <div className={sectionTitle}>
               <span className={sectionNumber}>06</span>
               社区入口（选填）
@@ -825,94 +833,90 @@ export default function MintLaunch() {
 
           <button
             type="button"
-            className={cn("kimi-btn-primary w-full py-3", deploying && "opacity-70")}
+            className={cn(
+              "group relative w-full overflow-hidden rounded-2xl bg-gradient-to-r from-[#D0FF00] to-[#B8E600] py-3.5 text-sm font-bold text-black shadow-[0_0_24px_rgba(208,255,0,0.25)] transition-all hover:shadow-[0_0_32px_rgba(208,255,0,0.4)] hover:scale-[1.01] active:scale-[0.99] disabled:opacity-60 disabled:hover:scale-100",
+              deploying && "opacity-70",
+            )}
             disabled={deploying || !isMintLaunchpadConfigured}
             onClick={handleDeploy}
           >
-            {deploying ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : !wallet.isConnected ? (
-              <Wallet className="h-4 w-4" />
-            ) : !wallet.isBSC ? (
-              <Shield className="h-4 w-4" />
-            ) : (
-              <Rocket className="h-4 w-4" />
-            )}
-            {deploying
-              ? "部署中..."
-              : !wallet.isConnected
-                ? "连接钱包"
-                : !wallet.isBSC
-                  ? "切换网络"
-                  : "确认部署"}
+            <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/30 to-transparent transition-transform duration-500 group-hover:translate-x-full" />
+            <span className="relative flex items-center justify-center gap-2">
+              {deploying ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : !wallet.isConnected ? (
+                <Wallet className="h-4 w-4" />
+              ) : !wallet.isBSC ? (
+                <Shield className="h-4 w-4" />
+              ) : (
+                <Rocket className="h-4 w-4" />
+              )}
+              {deploying
+                ? "KimiMint 部署中..."
+                : !wallet.isConnected
+                  ? "连接钱包"
+                  : !wallet.isBSC
+                    ? "切换网络"
+                    : "确认 KimiMint 部署"}
+            </span>
           </button>
         </div>
 
         {/* Right sticky preview */}
         <div className="space-y-5">
-          <div className={cn(sectionCard, "sticky top-4")}>
+          <div className={cn(sectionCard, sectionCardGlow, "sticky top-4")}>
             <div className="text-center">
               {avatar ? (
-                <img src={avatar} alt="preview" className="mx-auto h-20 w-20 rounded-2xl object-cover" />
+                <img
+                  src={avatar}
+                  alt="preview"
+                  className="mx-auto h-24 w-24 rounded-2xl object-cover ring-2 ring-[#25282C]"
+                />
               ) : (
-                <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-[#D0FF00]/20 to-[#2EDEDB]/20 text-2xl font-bold text-[#D0FF00]">
-                  {form.symbol.slice(0, 2) || "PE"}
+                <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-2xl bg-gradient-to-br from-[#D0FF00]/25 via-[#D0FF00]/10 to-[#2EDEDB]/20 text-3xl font-black text-[#D0FF00] ring-1 ring-[#D0FF00]/20">
+                  {form.symbol.slice(0, 2) || "KM"}
                 </div>
               )}
-              <h3 className="mt-3 text-xl font-bold text-white">{form.tokenName || "PEPE"}</h3>
+              <h3 className="mt-4 text-xl font-bold text-white">{form.tokenName || "KimiMint Token"}</h3>
               <p className="text-sm text-[#9CA3AF]">
-                {form.symbol || "PEPE"} · {selectedTemplate.name}
+                {form.symbol || "KMINT"} · {selectedTemplate.name}
               </p>
+              <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-[#D0FF00]/10 px-2.5 py-1 text-[10px] font-medium text-[#D0FF00]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#D0FF00]" />
+                KimiMint 发射台
+              </div>
             </div>
 
             <div className="mt-5 space-y-3 text-sm">
-              <div className="flex justify-between text-[#9CA3AF]">
-                <span>模板</span>
-                <span className="text-white">{selectedTemplate.name}</span>
-              </div>
-              <div className="flex justify-between text-[#9CA3AF]">
-                <span>工厂</span>
-                <span className="font-mono text-white">
-                  {shortAddress(mintLaunchpadConfig.factoryAddress)}
-                </span>
-              </div>
-              <div className="flex justify-between text-[#9CA3AF]">
-                <span>部署费</span>
-                <span className="text-white">{selectedTemplate.fee}</span>
-              </div>
-              <div className="flex justify-between text-[#9CA3AF]">
-                <span>付款代币</span>
-                <span className="text-white">BNB</span>
-              </div>
-              <div className="flex justify-between text-[#9CA3AF]">
-                <span>铸造份数</span>
-                <span className="text-white">{form.mintCount || "0"}</span>
-              </div>
-              <div className="flex justify-between text-[#9CA3AF]">
-                <span>每份代币</span>
-                <span className="text-white">{tokensPerMint.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between text-[#9CA3AF]">
-                <span>单钱包上限</span>
-                <span className="text-white">
-                  {Number(form.maxMintPerWallet || 0) > 0 ? form.maxMintPerWallet : "不限制"}
-                </span>
-              </div>
-              <div className="flex justify-between text-[#9CA3AF]">
-                <span>白名单</span>
-                <span className={whitelistEnabled ? "text-[#D0FF00]" : "text-white"}>
-                  {whitelistEnabled ? "开启" : "关闭"}
-                </span>
-              </div>
-              <div className="flex justify-between text-[#9CA3AF]">
-                <span>税率</span>
-                <span className="text-white">
-                  {buyTax}% / {sellTax}%
-                </span>
-              </div>
+              {[
+                { label: "模板", value: selectedTemplate.name },
+                { label: "工厂", value: shortAddress(mintLaunchpadConfig.factoryAddress), mono: true },
+                { label: "部署费", value: selectedTemplate.fee },
+                { label: "付款代币", value: "BNB" },
+                { label: "铸造份数", value: form.mintCount || "0" },
+                { label: "每份代币", value: tokensPerMint.toLocaleString() },
+                {
+                  label: "单钱包上限",
+                  value: Number(form.maxMintPerWallet || 0) > 0 ? form.maxMintPerWallet : "不限制",
+                },
+                { label: "白名单", value: whitelistEnabled ? "开启" : "关闭", highlight: whitelistEnabled },
+                { label: "税率", value: `${buyTax}% / ${sellTax}%` },
+              ].map((item) => (
+                <div key={item.label} className="flex justify-between border-b border-[#25282C]/50 pb-2 text-[#9CA3AF] last:border-0 last:pb-0">
+                  <span>{item.label}</span>
+                  <span
+                    className={cn(
+                      item.mono && "font-mono",
+                      item.highlight ? "text-[#D0FF00]" : "text-white",
+                    )}
+                  >
+                    {item.value}
+                  </span>
+                </div>
+              ))}
             </div>
 
-            <div className="mt-5 rounded-xl bg-[#0A0B0D] p-4">
+            <div className="mt-5 rounded-xl border border-[#25282C] bg-[#0A0B0D]/80 p-4">
               <div className="mb-3 text-xs font-medium text-[#9CA3AF]">税收分配</div>
               <AllocationRing allocation={allocation} total={allocationTotal} />
               <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
