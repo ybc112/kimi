@@ -28,13 +28,13 @@ type SessionRequest = {
 };
 
 function getMinimumKimi(): { label: string; amount: bigint } {
-  const configured = (Deno.env.get("AI_MIN_KIMI_BALANCE") || "200000").trim();
+  const configured = (Deno.env.get("AI_MIN_KIMI_BALANCE") || "100000").trim();
   try {
     const amount = ethers.parseUnits(configured, 18);
     if (amount < 0n) throw new Error();
     return { label: configured, amount };
   } catch {
-    return { label: "200000", amount: ethers.parseUnits("200000", 18) };
+    return { label: "100000", amount: ethers.parseUnits("100000", 18) };
   }
 }
 
