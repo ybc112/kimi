@@ -13,7 +13,6 @@ import {
   randomBytes,
   type Signer,
 } from "ethers";
-import { KIMI_TOKEN_ADDRESS } from "@/lib/contracts/kimiToken";
 import { MINT_BNB_CHAIN, MINT_USDT_ADDRESS } from "./data";
 import type {
   MintLaunchDraft,
@@ -30,20 +29,18 @@ const DEFAULT_APP_BACKEND_URL = "same-origin";
 const configuredBackendUrl =
   String(import.meta.env.VITE_MINT_BACKEND_URL ?? "").trim() || DEFAULT_APP_BACKEND_URL;
 
-export const DEFAULT_MINT_FACTORY_ADDRESS = "0xee6584aD5AdCA6Cdd189d242DC1e6d922403dFBc";
+export const DEFAULT_MINT_FACTORY_ADDRESS = "0x084c85f7Cf1d9cf3d638EF75b1561E464884dfbC";
 export const DEFAULT_MINT_FEE_RECIPIENT = "0xc5c848Dc65d004Adc1c9DC54BBb3b3bB7084C1E9";
-const DEFAULT_CREATION_FEE_KIMI = "10000";
-const KIMI_DECIMALS = 18;
+const DEFAULT_CREATION_FEE_BNB = "0.005";
 
 export const mintLaunchpadConfig = {
   chainId: Number(import.meta.env.VITE_MINT_CHAIN_ID ?? 56),
   factoryAddress:
     String(import.meta.env.VITE_MINT_FACTORY_ADDRESS ?? "").trim() || DEFAULT_MINT_FACTORY_ADDRESS,
   creationFeeToken:
-    String(import.meta.env.VITE_MINT_CREATION_FEE_TOKEN ?? "").trim() || KIMI_TOKEN_ADDRESS,
-  creationFeeAmount: parseUnits(
-    String(import.meta.env.VITE_MINT_CREATION_FEE_KIMI ?? DEFAULT_CREATION_FEE_KIMI),
-    KIMI_DECIMALS,
+    String(import.meta.env.VITE_MINT_CREATION_FEE_TOKEN ?? "").trim() || ZeroAddress,
+  creationFeeAmount: parseEther(
+    String(import.meta.env.VITE_MINT_CREATION_FEE_BNB ?? DEFAULT_CREATION_FEE_BNB),
   ),
   feeRecipient:
     String(import.meta.env.VITE_MINT_FEE_RECIPIENT ?? "").trim() || DEFAULT_MINT_FEE_RECIPIENT,
@@ -209,17 +206,7 @@ const messages = {
   insufficientNativeBalance: (required: string, balance: string) =>
     `钱包 BNB 不足：预计至少需要 ${required} BNB，当前余额 ${balance} BNB。`,
   vanityUnavailable: "本次没有匹配到 EEEE 靓号地址，请重新点击部署再试一次。",
-  insufficientKimiBalance: (required: string, balance: string) =>
-    `KIMI 余额不足：创建代币需要 ${required} KIMI，当前余额 ${balance} KIMI。`,
 };
-
-const erc20Abi = [
-  "function approve(address spender,uint256 amount) returns (bool)",
-  "function allowance(address owner,address spender) view returns (uint256)",
-  "function balanceOf(address account) view returns (uint256)",
-  "function transfer(address to,uint256 amount) returns (bool)",
-  "function decimals() view returns (uint8)",
-] as const;
 
 export async function createMintLaunchToken(
   signer: Signer,
@@ -242,30 +229,23 @@ export async function createMintLaunchToken(
 
   const factory = new Contract(mintLaunchpadConfig.factoryAddress, launchFactoryAbi, signer);
 
-  // Approve KIMI creation fee before calling factory
+  // Check native BNB balance for creation fee before calling factory
   if (mintLaunchpadConfig.creationFeeAmount > 0n) {
-    const feeToken = new Contract(mintLaunchpadConfig.creationFeeToken, erc20Abi, signer);
-    const [currentAllowance, currentBalance] = await Promise.all([
-      feeToken.allowance(from, mintLaunchpadConfig.factoryAddress).then((value: unknown) => BigInt(String(value))),
-      feeToken.balanceOf(from).then((value: unknown) => BigInt(String(value))),
-    ]);
-
-    if (currentBalance < mintLaunchpadConfig.creationFeeAmount) {
-      const requiredKimi = formatUnits(mintLaunchpadConfig.creationFeeAmount, KIMI_DECIMALS);
-      const balanceKimi = formatUnits(currentBalance, KIMI_DECIMALS);
-      throw new Error(messages.insufficientKimiBalance(requiredKimi, balanceKimi));
+    const provider = signer.provider;
+    if (!provider) {
+      throw new Error(messages.txFailed);
     }
-
-    if (currentAllowance < mintLaunchpadConfig.creationFeeAmount) {
-      const approveTx = await feeToken.approve(
-        mintLaunchpadConfig.factoryAddress,
-        mintLaunchpadConfig.creationFeeAmount,
-      );
-      await approveTx.wait();
+    const currentBalance = await provider.getBalance(from);
+    if (currentBalance < mintLaunchpadConfig.creationFeeAmount) {
+      const requiredBnb = formatEther(mintLaunchpadConfig.creationFeeAmount);
+      const balanceBnb = formatEther(currentBalance);
+      throw new Error(messages.insufficientNativeBalance(requiredBnb, balanceBnb));
     }
   }
 
-  const tx = await factory.createLaunch(params, salt);
+  const tx = await factory.createLaunch(params, salt, {
+    value: mintLaunchpadConfig.creationFeeAmount,
+  });
   await tx.wait();
 
   return {
