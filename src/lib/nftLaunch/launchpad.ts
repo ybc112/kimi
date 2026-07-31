@@ -23,6 +23,13 @@ export async function uploadNFTAsset(dataUrl: string): Promise<string> {
   if (!result.url) throw new Error("NFT 图片服务返回地址为空");
   return result.url;
 }
+
+export async function queueNFTVerification(collection: string) {
+  if (!backendUrl || !isAddress(collection)) return { ok: false, skipped: true };
+  const response = await fetch(`${backendUrl}/api/nft/verify-project`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ collection }) });
+  if (!response.ok) return { ok: false, skipped: true };
+  return response.json() as Promise<{ ok: boolean; collection?: string }>;
+}
 export async function createNFTLaunch(signer: Signer, draft: NFTLaunchDraft) {
   if (!isNFTLaunchpadConfigured) throw new Error("NFT Factory 尚未配置，请部署 Factory 后设置 VITE_NFT_FACTORY_ADDRESS");
   if (!draft.name.trim() || !draft.symbol.trim() || !draft.baseURI.trim()) throw new Error("请填写名称、Symbol 和 Base URI");

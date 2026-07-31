@@ -18,6 +18,7 @@
     "kimimint:verify:project": "node scripts/verify-kimimint-project.cjs",
     "nft:deploy:bsc": "node scripts/deploy-nft-factory-direct.cjs",
     "nft:deploy:direct": "node scripts/deploy-nft-factory-direct.cjs",
+    "nft:verify": "node scripts/prepare-full-verify.mjs && node scripts/verify-kiminft.cjs",
     "verify": "npm run secrets:check && npm run check && npm run lint && npm run test && npm run contracts:compile && npm run templates:check && npm run build"
   },
   "dependencies": {

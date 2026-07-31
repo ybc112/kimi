@@ -78,6 +78,8 @@ function main() {
     "contracts/mint/KimiMintVault.sol",
     "contracts/mint/KimiMintDeployers.sol",
     "contracts/mint/KimiMintAuditRegistry.sol",
+    "contracts/nft/KimiNFTLaunchFactory.sol",
+    "contracts/nft/KimiNFTCollection.sol",
   ];
 
   const fullSources = {};
@@ -94,6 +96,7 @@ function main() {
       outputSelection: {
         "*": { "*": ["abi", "evm.bytecode.object", "evm.deployedBytecode.object"] },
       },
+      metadata: { useLiteralContent: true },
     },
   };
 

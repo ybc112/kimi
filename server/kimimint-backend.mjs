@@ -31,6 +31,8 @@ const deployment = readFirstJson(
 );
 const factoryArtifact = readJson("artifacts/contracts/mint/KimiMintLaunchFactory.sol/KimiMintLaunchFactory.json");
 const tokenArtifact = readJson("artifacts/contracts/mint/KimiMintToken.sol/KimiMintToken.json");
+const nftDeployment = readJson("deployments/bsc-KimiNFTLaunchFactory.json", {});
+const nftFactoryArtifact = readJson("artifacts/contracts/nft/KimiNFTLaunchFactory.sol/KimiNFTLaunchFactory.json", { abi: [] });
 const factorySource =
   process.env.KIMIMINT_FACTORY_ADDRESS ||
   process.env.VITE_MINT_FACTORY_ADDRESS ||
@@ -48,6 +50,10 @@ const rpcUrl = process.env.KIMIMINT_RPC_URL || process.env.BSC_RPC_URL || "https
 const factoryAddress = getAddress(factorySource);
 const provider = new JsonRpcProvider(rpcUrl, chainId);
 const factory = new Contract(factoryAddress, factoryArtifact.abi, provider);
+const nftFactoryAddress = isAddress(process.env.KIMINFT_FACTORY_ADDRESS || nftDeployment.factory || "")
+  ? getAddress(process.env.KIMINFT_FACTORY_ADDRESS || nftDeployment.factory)
+  : "";
+const nftFactory = nftFactoryAddress ? new Contract(nftFactoryAddress, nftFactoryArtifact.abi, provider) : null;
 const port = Number(process.env.KIMIMINT_BACKEND_PORT || 8787);
 const backendToken = process.env.KIMIMINT_BACKEND_TOKEN || "";
 const autoVerify = process.env.AUTO_VERIFY_PROJECTS !== "false";
@@ -84,6 +90,7 @@ const server = createServer(async (request, response) => {
         requiredTokenSuffix: await readFactoryRequiredSuffix(),
         autoVerify,
         verifierReady: Boolean(process.env.BSCSCAN_API_KEY),
+        nftFactory: nftFactoryAddress,
         queued: [...jobs.values()].filter((job) => job.status === "queued").length,
         running: [...jobs.values()].filter((job) => job.status === "running").length,
       });
@@ -116,6 +123,16 @@ const server = createServer(async (request, response) => {
       await assertFactoryProject(token);
       queueVerify(token, "api");
       sendJson(response, 202, { ok: true, token, job: jobs.get(token.toLowerCase()) });
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/nft/verify-project") {
+      limitRequest(request, "verify", verifyRateLimit);
+      const body = await readBody(request);
+      const collection = normalizeAddress(body.collection);
+      await assertNFTFactoryProject(collection);
+      queueVerify(`nft:${collection}`, "api");
+      sendJson(response, 202, { ok: true, collection, job: jobs.get(`nft:${collection}`.toLowerCase()) });
       return;
     }
 
@@ -228,11 +245,14 @@ async function drainVerifyQueue() {
 function runVerify(token) {
   return new Promise((resolve, reject) => {
     const logs = [];
-    const child = spawn("npm", ["run", "kimimint:verify:project"], {
+    const isNft = String(token).startsWith("nft:");
+    const projectAddress = isNft ? String(token).slice(4) : token;
+    const child = spawn("npm", ["run", isNft ? "nft:verify" : "kimimint:verify:project"], {
       cwd: rootDir,
       env: {
         ...process.env,
-        PROJECT_TOKEN: token,
+        PROJECT_TOKEN: projectAddress,
+        NFT_VERIFY_ADDRESS: isNft ? projectAddress : "",
         FACTORY_ADDRESS: factoryAddress,
         KIMIMINT_FACTORY_ADDRESS: factoryAddress,
         BSC_RPC_URL: rpcUrl,
@@ -253,6 +273,14 @@ function runVerify(token) {
       reject(new Error(logs.join("") || `verify exited with code ${code}`));
     });
   });
+}
+
+async function assertNFTFactoryProject(collection) {
+  if (!nftFactory) throw new Error("NFT Factory is not configured.");
+  const project = await nftFactory.projects(collection);
+  if (String(project.collection || project[1]).toLowerCase() !== collection.toLowerCase()) {
+    throw new Error("Collection is not indexed by the configured NFT Factory.");
+  }
 }
 
 async function findVanitySalt(body) {
