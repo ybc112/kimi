@@ -18,7 +18,7 @@ import {
   Trash2,
   Wallet,
 } from "lucide-react";
-import { JsonRpcProvider } from "ethers";
+
 import { cn } from "@/lib/utils";
 import { useWallet } from "@/hooks/useWallet";
 import { useAppStore } from "@/store";
@@ -28,12 +28,12 @@ import {
   initialMintAllocation,
   initialMintForm,
   mintCreationFeeLabel,
-  MINT_BNB_CHAIN,
   MINT_USDT_ADDRESS,
   mintTemplates,
 } from "@/lib/mintLaunch/data";
 import {
   createMintLaunchToken,
+  getMintReadProvider,
   isMintLaunchpadConfigured,
   mintLaunchpadConfig,
   queueMintProjectVerification,
@@ -252,7 +252,7 @@ export default function MintLaunch() {
     try {
       const txResult = await createMintLaunchToken(wallet.signer, draft);
       const receipt = await waitForMintTransactionReceipt(
-        new JsonRpcProvider(MINT_BNB_CHAIN.rpcUrls[0]),
+        await getMintReadProvider(),
         txResult.hash,
       );
       const token = readMintLaunchCreatedToken(receipt);

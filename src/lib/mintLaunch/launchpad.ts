@@ -13,7 +13,7 @@ import {
   randomBytes,
   type Signer,
 } from "ethers";
-import { MINT_BNB_CHAIN, MINT_USDT_ADDRESS } from "./data";
+import { MINT_USDT_ADDRESS } from "./data";
 import type {
   MintLaunchDraft,
   MintLaunchProject,
@@ -57,9 +57,19 @@ const TRADING_ENABLED_EVENT_TOPIC = id("TradingEnabled()");
 export const isMintLaunchpadConfigured =
   Boolean(mintLaunchpadConfig.factoryAddress) && isAddress(mintLaunchpadConfig.factoryAddress);
 
+const MINT_FALLBACK_RPC_URLS = [
+  "https://bsc-dataseed.binance.org/",
+  "https://bsc-dataseed1.defibit.io/",
+  "https://bsc-dataseed1.ninicoin.io/",
+  "https://rpc-bsc.48.club",
+  "https://bsc-mainnet.public.blastapi.io",
+];
+
 export async function getMintReadProvider(): Promise<JsonRpcProvider> {
+  const customRpc = String(import.meta.env.VITE_MINT_RPC_URL ?? "").trim();
+  const urls = customRpc ? [customRpc, ...MINT_FALLBACK_RPC_URLS] : MINT_FALLBACK_RPC_URLS;
   const errors: string[] = [];
-  for (const url of MINT_BNB_CHAIN.rpcUrls) {
+  for (const url of urls) {
     try {
       const provider = new JsonRpcProvider(url, mintLaunchpadConfig.chainId);
       await provider.getBlockNumber();
@@ -68,7 +78,7 @@ export async function getMintReadProvider(): Promise<JsonRpcProvider> {
       errors.push(`${url}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
-  throw new Error(`All BSC RPC endpoints failed:\n${errors.join("\n")}`);
+  throw new Error(`BSC RPC 连接失败，请检查网络或配置 VITE_MINT_RPC_URL。\n${errors.join("\n")}`);
 }
 
 export const launchFactoryAbi = [
