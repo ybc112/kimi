@@ -10,6 +10,7 @@ import {
   Users,
   Copy,
   Check,
+  ArrowUpDown,
 } from "lucide-react";
 import { fetchMintLaunchProjects } from "@/lib/mintLaunch/launchpad";
 import type { MintLaunchProject } from "@/lib/mintLaunch/types";
@@ -240,13 +241,24 @@ export default function MintLaunches() {
                       {project.finalized ? "已结束" : "进行中"}
                     </span>
                   </div>
-                  <Link
-                    to={`/mint-project/${project.token}`}
-                    className="inline-flex items-center gap-1 text-xs text-[#D0FF00] hover:underline"
-                  >
-                    详情
-                    <ArrowRight className="h-3 w-3" />
-                  </Link>
+                  <div className="flex items-center gap-3">
+                    {project.finalized && (
+                      <Link
+                        to={`/swap?token=${project.token}`}
+                        className="inline-flex items-center gap-1 text-xs text-[#2EDEDB] hover:underline"
+                      >
+                        交易
+                        <ArrowUpDown className="h-3 w-3" />
+                      </Link>
+                    )}
+                    <Link
+                      to={`/mint-project/${project.token}`}
+                      className="inline-flex items-center gap-1 text-xs text-[#D0FF00] hover:underline"
+                    >
+                      详情
+                      <ArrowRight className="h-3 w-3" />
+                    </Link>
+                  </div>
                 </div>
               </div>
             </div>

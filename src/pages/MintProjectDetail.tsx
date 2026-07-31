@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, Link } from "react-router-dom";
 import {
   ArrowLeft,
   ExternalLink,
@@ -9,6 +9,7 @@ import {
   Users,
   Save,
   Power,
+  ArrowUpDown,
 } from "lucide-react";
 import {
   fetchMintLaunchProjects,
@@ -282,6 +283,16 @@ export default function MintProjectDetail() {
             </a>
           </div>
         </div>
+
+        {project.finalized && (
+          <Link
+            to={`/swap?token=${project.token}`}
+            className="kimi-btn-primary mt-4 flex w-full items-center justify-center gap-2"
+          >
+            <ArrowUpDown className="h-4 w-4" />
+            去 PancakeSwap 交易
+          </Link>
+        )}
       </section>
 
       {!project.finalized && (
