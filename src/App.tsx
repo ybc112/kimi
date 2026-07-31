@@ -16,6 +16,7 @@ const PageBuilder = lazy(() => import("@/pages/PageBuilder"));
 const TokenAudit = lazy(() => import("@/pages/TokenAudit"));
 const MintLaunch = lazy(() => import("@/pages/MintLaunch"));
 const MintLaunches = lazy(() => import("@/pages/MintLaunches"));
+const MintProjectDetail = lazy(() => import("@/pages/MintProjectDetail"));
 
 function PageLoading() {
   return (
@@ -46,6 +47,7 @@ export default function App() {
             <Route path="/token-audit" element={<TokenAudit />} />
             <Route path="/mint-launch" element={<MintLaunch />} />
             <Route path="/mint-launches" element={<MintLaunches />} />
+            <Route path="/mint-project/:token" element={<MintProjectDetail />} />
           </Routes>
         </Suspense>
       </Layout>

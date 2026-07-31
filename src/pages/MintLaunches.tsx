@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import {
-  ExternalLink,
   Loader2,
   Rocket,
   Search,
   RefreshCw,
   ArrowRight,
   Clock,
+  Users,
 } from "lucide-react";
 import { fetchMintLaunchProjects } from "@/lib/mintLaunch/launchpad";
 import type { MintLaunchProject } from "@/lib/mintLaunch/types";
@@ -183,6 +183,13 @@ export default function MintLaunches() {
                       {project.mintedCount} / {project.mintCount}
                     </span>
                   </div>
+                  {project.whitelistEnabled && (
+                    <div className="flex items-center gap-1.5 text-xs text-[#9CA3AF]">
+                      <Users className="h-3 w-3" />
+                      白名单 {project.whitelistMintedCount}/{project.whitelistMintCount} · 公开{" "}
+                      {project.publicMintedCount}/{project.publicMintCount}
+                    </div>
+                  )}
                 </div>
 
                 <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
@@ -203,15 +210,13 @@ export default function MintLaunches() {
                       {project.finalized ? "已结束" : "进行中"}
                     </span>
                   </div>
-                  <a
-                    href={`https://bscscan.com/token/${project.token}`}
-                    target="_blank"
-                    rel="noreferrer"
+                  <Link
+                    to={`/mint-project/${project.token}`}
                     className="inline-flex items-center gap-1 text-xs text-[#D0FF00] hover:underline"
                   >
-                    BscScan
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
+                    详情
+                    <ArrowRight className="h-3 w-3" />
+                  </Link>
                 </div>
               </div>
             </div>
