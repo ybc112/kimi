@@ -5,6 +5,7 @@ import {
   ZeroAddress,
   formatEther,
   formatUnits,
+  getAddress,
   hexlify,
   id,
   isAddress,
@@ -30,13 +31,26 @@ const configuredBackendUrl =
   String(import.meta.env.VITE_MINT_BACKEND_URL ?? "").trim() || DEFAULT_APP_BACKEND_URL;
 
 export const DEFAULT_MINT_FACTORY_ADDRESS = "0x66a6EdF9383c64C87a91FC8C98189CCA5A764DBf";
+const RETIRED_MINT_FACTORY_ADDRESSES = new Set([
+  "0x084c85f7cf1d9cf3d638ef75b1561e464884dfbc",
+]);
 export const DEFAULT_MINT_FEE_RECIPIENT = "0xc5c848Dc65d004Adc1c9DC54BBb3b3bB7084C1E9";
 const DEFAULT_CREATION_FEE_BNB = "0.005";
 
+function resolveMintFactoryAddress(value: string): string {
+  const configured = value.trim();
+  if (!configured || !isAddress(configured)) {
+    return DEFAULT_MINT_FACTORY_ADDRESS;
+  }
+  const normalized = getAddress(configured);
+  return RETIRED_MINT_FACTORY_ADDRESSES.has(normalized.toLowerCase())
+    ? DEFAULT_MINT_FACTORY_ADDRESS
+    : normalized;
+}
+
 export const mintLaunchpadConfig = {
   chainId: Number(import.meta.env.VITE_MINT_CHAIN_ID ?? 56),
-  factoryAddress:
-    String(import.meta.env.VITE_MINT_FACTORY_ADDRESS ?? "").trim() || DEFAULT_MINT_FACTORY_ADDRESS,
+  factoryAddress: resolveMintFactoryAddress(String(import.meta.env.VITE_MINT_FACTORY_ADDRESS ?? "")),
   creationFeeToken:
     String(import.meta.env.VITE_MINT_CREATION_FEE_TOKEN ?? "").trim() || ZeroAddress,
   creationFeeAmount: parseEther(
