@@ -1,0 +1,11 @@
+{
+  "network": "bsc",
+  "chainId": 56,
+  "factory": "0xbE8EDD0A8cfA0ddb3d4bcd6D877641e7AF77ca34",
+  "deployer": "0xe1F9Fb65BBb39ebd4d0C204c95513d3f6421c407",
+  "deploymentTx": "0x208cb7ad19506452142f522432f47be176f390d22969ff78b9047b86e99be245",
+  "feeRecipient": "0xc5c848Dc65d004Adc1c9DC54BBb3b3bB7084C1E9",
+  "creationFee": "10000000000000000",
+  "requiredCollectionSuffix": "0000",
+  "deployedAt": "2026-07-31T15:22:38.714Z"
+}

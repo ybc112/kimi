@@ -1,7 +1,8 @@
 import { Contract, Interface, getAddress, isAddress, parseEther, type Signer } from "ethers";
 import type { NFTLaunchDraft } from "./types";
 
-export const NFT_FACTORY_ADDRESS = String(import.meta.env.VITE_NFT_FACTORY_ADDRESS || "").trim();
+export const DEFAULT_NFT_FACTORY_ADDRESS = "0xbE8EDD0A8cfA0ddb3d4bcd6D877641e7AF77ca34";
+export const NFT_FACTORY_ADDRESS = String(import.meta.env.VITE_NFT_FACTORY_ADDRESS || DEFAULT_NFT_FACTORY_ADDRESS).trim();
 export const NFT_CREATION_FEE = parseEther(String(import.meta.env.VITE_NFT_CREATION_FEE_BNB || "0.01"));
 export const nftFactoryAbi = [
   "function createNFTLaunch(string name,string symbol,string description,string imageURI,string baseURI,string metadataURI,uint256 maxSupply,uint256 mintPrice,uint256 maxMintPerWallet,bytes32 salt) payable returns (address collection)",
