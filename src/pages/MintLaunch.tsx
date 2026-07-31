@@ -397,7 +397,7 @@ export default function MintLaunch() {
                   className="kimi-input"
                   placeholder="输入代币符号"
                   value={form.symbol}
-                  onChange={(e) => updateForm("symbol", e.target.value.toUpperCase())}
+                  onChange={(e) => updateForm("symbol", e.target.value)}
                 />
               </div>
             </div>

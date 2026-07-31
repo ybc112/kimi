@@ -8,6 +8,8 @@ import {
   ArrowRight,
   Clock,
   Users,
+  Copy,
+  Check,
 } from "lucide-react";
 import { fetchMintLaunchProjects } from "@/lib/mintLaunch/launchpad";
 import type { MintLaunchProject } from "@/lib/mintLaunch/types";
@@ -16,6 +18,28 @@ import { cn } from "@/lib/utils";
 
 function shortAddress(address: string) {
   return address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "";
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // ignore
+    }
+  };
+  return (
+    <button
+      onClick={handleCopy}
+      className="ml-1 inline-flex items-center rounded p-0.5 text-[#6B7280] transition-colors hover:bg-[#25282C] hover:text-[#D0FF00]"
+      title="复制地址"
+    >
+      {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+    </button>
+  );
 }
 
 function formatTime(ts: number) {
@@ -195,11 +219,17 @@ export default function MintLaunches() {
                 <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
                   <div className="rounded-lg border border-[#25282C] bg-[#0A0B0D]/80 p-2">
                     <div className="text-[#6B7280]">代币</div>
-                    <div className="mt-0.5 font-mono text-white">{shortAddress(project.token)}</div>
+                    <div className="mt-0.5 flex items-center font-mono text-white">
+                      {shortAddress(project.token)}
+                      <CopyButton text={project.token} />
+                    </div>
                   </div>
                   <div className="rounded-lg border border-[#25282C] bg-[#0A0B0D]/80 p-2">
                     <div className="text-[#6B7280]">金库</div>
-                    <div className="mt-0.5 font-mono text-white">{shortAddress(project.vault)}</div>
+                    <div className="mt-0.5 flex items-center font-mono text-white">
+                      {shortAddress(project.vault)}
+                      <CopyButton text={project.vault} />
+                    </div>
                   </div>
                 </div>
 
