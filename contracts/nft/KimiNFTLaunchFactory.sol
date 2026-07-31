@@ -27,7 +27,7 @@ contract KimiNFTLaunchFactory is Ownable {
         if (msg.value != creationFee) revert InvalidFee();
         if (bytes(name_).length == 0 || bytes(symbol_).length == 0 || bytes(baseURI_).length == 0) revert InvalidParams();
         collection = address(new KimiNFTCollection{salt: salt_}(name_, symbol_, description_, imageURI_, baseURI_, maxSupply_, mintPrice_, maxMintPerWallet_, msg.sender));
-        if (requiredCollectionSuffix != 0 && uint160(collection) % 65536 != requiredCollectionSuffix) revert InvalidSuffix(collection, requiredCollectionSuffix);
+        if (requiredCollectionSuffix != 0 && uint16(uint160(collection)) != requiredCollectionSuffix) revert InvalidSuffix(collection, requiredCollectionSuffix);
         allCollections.push(collection);
         projects[collection] = Project(msg.sender, collection, description_, imageURI_, metadataURI_, uint64(block.timestamp));
         (bool ok,) = feeRecipient.call{value: msg.value}(""); if (!ok) revert InvalidFee();

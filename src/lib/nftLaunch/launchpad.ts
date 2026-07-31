@@ -1,7 +1,7 @@
 import { Contract, Interface, getAddress, isAddress, parseEther, type Signer } from "ethers";
 import type { NFTLaunchDraft } from "./types";
 
-export const DEFAULT_NFT_FACTORY_ADDRESS = "0xbE8EDD0A8cfA0ddb3d4bcd6D877641e7AF77ca34";
+export const DEFAULT_NFT_FACTORY_ADDRESS = "0xd9c7E7Da8F6151FA111d25F33db32BF5c1e5D891";
 export const NFT_FACTORY_ADDRESS = String(import.meta.env.VITE_NFT_FACTORY_ADDRESS || DEFAULT_NFT_FACTORY_ADDRESS).trim();
 export const NFT_CREATION_FEE = parseEther(String(import.meta.env.VITE_NFT_CREATION_FEE_BNB || "0.01"));
 export const nftFactoryAbi = [
@@ -12,7 +12,8 @@ export const nftFactoryAbi = [
 ] as const;
 export const nftCollectionAbi = ["function mint(uint256 quantity) payable", "function name() view returns (string)", "function symbol() view returns (string)", "function totalMinted() view returns (uint256)", "function maxSupply() view returns (uint256)"] as const;
 export const isNFTLaunchpadConfigured = isAddress(NFT_FACTORY_ADDRESS);
-const backendUrl = String(import.meta.env.VITE_NFT_BACKEND_URL || import.meta.env.VITE_MINT_BACKEND_URL || "").trim().replace(/\/+$/, "");
+const backendUrl = String(import.meta.env.VITE_NFT_BACKEND_URL || import.meta.env.VITE_MINT_BACKEND_URL || "https://api.kimi-vault.com").trim().replace(/\/+$/, "");
+const nftVanitySuffix = String(import.meta.env.VITE_NFT_VANITY_SUFFIX || "7777").replace(/^0x/i, "").toLowerCase();
 
 export async function uploadNFTAsset(dataUrl: string): Promise<string> {
   if (!/^data:image\/(?:png|jpeg|jpg|webp|gif|svg\+xml);base64,/i.test(dataUrl)) throw new Error("NFT 图片格式无效");
@@ -36,7 +37,7 @@ export async function createNFTLaunch(signer: Signer, draft: NFTLaunchDraft) {
   const maxSupply = BigInt(draft.maxSupply); const maxWallet = BigInt(draft.maxMintPerWallet);
   if (maxSupply <= 0n || maxSupply > 1000000n || maxWallet <= 0n || maxWallet > maxSupply) throw new Error("供应量或钱包上限无效");
   const factory = new Contract(NFT_FACTORY_ADDRESS, nftFactoryAbi, signer);
-  const salt = "0x" + crypto.getRandomValues(new Uint8Array(32)).reduce((s, b) => s + b.toString(16).padStart(2, "0"), "");
+  const salt = await resolveNFTVanitySalt(draft, await signer.getAddress());
   const tx = await factory.createNFTLaunch(draft.name.trim(), draft.symbol.trim().toUpperCase(), draft.description.trim(), draft.imageURI.trim(), draft.baseURI.trim(), draft.metadataURI.trim(), maxSupply, parseEther(draft.mintPrice || "0"), maxWallet, salt, { value: NFT_CREATION_FEE });
   const receipt = await tx.wait();
   const parsed = new Interface(nftFactoryAbi);
@@ -51,6 +52,17 @@ export async function createNFTLaunch(signer: Signer, draft: NFTLaunchDraft) {
   }
   return { hash: tx.hash, collection };
 }
+
+async function resolveNFTVanitySalt(draft: NFTLaunchDraft, creator: string) {
+  if (!nftVanitySuffix) return randomSalt();
+  const response = await fetch(`${backendUrl}/api/nft/vanity-salt`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ creator, suffix: nftVanitySuffix, params: draft }) });
+  if (!response.ok) throw new Error("NFT 靓号地址生成失败，请重试");
+  const result = await response.json() as { ok?: boolean; salt?: string; collectionAddress?: string };
+  if (!result.ok || !result.salt || !result.collectionAddress?.toLowerCase().endsWith(nftVanitySuffix)) throw new Error("NFT 靓号地址生成失败，请重试");
+  return result.salt;
+}
+
+function randomSalt() { return "0x" + crypto.getRandomValues(new Uint8Array(32)).reduce((s, b) => s + b.toString(16).padStart(2, "0"), ""); }
 export async function mintNFT(signer: Signer, collection: string, quantity: string, mintPrice: string) {
   if (!isAddress(collection)) throw new Error("NFT 合集地址无效");
   const amount = BigInt(quantity); if (amount <= 0n) throw new Error("铸造数量无效");

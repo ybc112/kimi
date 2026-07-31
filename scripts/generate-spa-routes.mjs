@@ -19,6 +19,10 @@ const routes = [
   "logs",
   "trending",
   "page-builder",
+  "mint-launch",
+  "mint-launches",
+  "nft-launch",
+  "nft-launches",
 ];
 
 await Promise.all(

@@ -16,6 +16,7 @@ import {
   id,
   isAddress,
   keccak256,
+  parseEther,
   randomBytes,
   solidityPackedKeccak256,
 } from "ethers";
@@ -54,6 +55,7 @@ const nftFactoryAddress = isAddress(process.env.KIMINFT_FACTORY_ADDRESS || nftDe
   ? getAddress(process.env.KIMINFT_FACTORY_ADDRESS || nftDeployment.factory)
   : "";
 const nftFactory = nftFactoryAddress ? new Contract(nftFactoryAddress, nftFactoryArtifact.abi, provider) : null;
+const nftCollectionArtifact = readJson("artifacts/contracts/nft/KimiNFTCollection.sol/KimiNFTCollection.json");
 const port = Number(process.env.KIMIMINT_BACKEND_PORT || 8787);
 const backendToken = process.env.KIMIMINT_BACKEND_TOKEN || "";
 const autoVerify = process.env.AUTO_VERIFY_PROJECTS !== "false";
@@ -133,6 +135,13 @@ const server = createServer(async (request, response) => {
       await assertNFTFactoryProject(collection);
       queueVerify(`nft:${collection}`, "api");
       sendJson(response, 202, { ok: true, collection, job: jobs.get(`nft:${collection}`.toLowerCase()) });
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/nft/vanity-salt") {
+      limitRequest(request, "vanity", vanityRateLimit);
+      const body = await readBody(request);
+      sendJson(response, 200, await findNFTVanitySalt(body));
       return;
     }
 
@@ -282,6 +291,28 @@ async function assertNFTFactoryProject(collection) {
     throw new Error("Collection is not indexed by the configured NFT Factory.");
   }
 }
+
+async function findNFTVanitySalt(body) {
+  if (!nftFactoryAddress) throw new Error("NFT Factory is not configured.");
+  const creator = normalizeAddress(body.creator);
+  const params = body.params || {};
+  const suffix = String(body.suffix || "7777").replace(/^0x/i, "").toLowerCase();
+  if (!/^[0-9a-f]{1,4}$/.test(suffix)) throw new Error("suffix must be 1-4 hex characters.");
+  const factory = new ContractFactory(nftCollectionArtifact.abi, nftCollectionArtifact.bytecode);
+  const deployTx = await factory.getDeployTransaction(
+    String(params.name || ""), String(params.symbol || "").toUpperCase(), String(params.description || ""), String(params.imageURI || ""), String(params.baseURI || ""),
+    BigInt(params.maxSupply || 0), parseEther(String(params.mintPrice || "0")), BigInt(params.maxMintPerWallet || 0), creator,
+  );
+  if (!deployTx.data) throw new Error("NFT init code is empty.");
+  const initCodeHash = keccak256(deployTx.data);
+  for (let attempts = 1; attempts <= 600000; attempts += 1) {
+    const salt = hexlify(randomBytes(32));
+    const address = getCreate2Address(nftFactoryAddress, salt, initCodeHash);
+    if (address.toLowerCase().endsWith(suffix)) return { ok: true, suffix, salt, collectionAddress: address, factory: nftFactoryAddress, attempts };
+  }
+  return { ok: false, suffix, factory: nftFactoryAddress, attempts: 600000 };
+}
+
 
 async function findVanitySalt(body) {
   const requestedSuffix = String(body.suffix || process.env.VITE_VANITY_SUFFIX || "eeee")
