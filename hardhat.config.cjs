@@ -12,7 +12,7 @@ module.exports = {
   solidity: {
     compilers: [
       {
-        version: "0.8.28",
+        version: "0.8.36",
         preferWasm: true,
         settings: {
           viaIR: true,

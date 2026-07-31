@@ -1,0 +1,14 @@
+{
+  "network": "bsc",
+  "chainId": 56,
+  "factory": "0x084c85f7Cf1d9cf3d638EF75b1561E464884dfbC",
+  "tokenDeployer": "0x8fE94c357E192B36e5F614543b5eE9f5804E709a",
+  "vaultDeployer": "0x2Efe8158944C3c2f3E55be010AF4C92842B98E05",
+  "feeRecipient": "0xc5c848Dc65d004Adc1c9DC54BBb3b3bB7084C1E9",
+  "creationFee": "5000000000000000",
+  "creationFeeToken": "0x0000000000000000000000000000000000000000",
+  "creationFeeAmount": "0",
+  "liquidityRouter": "0x10ED43C718714eb63d5aA57B78B54704E256024E",
+  "requiredTokenSuffix": 30583,
+  "deployedAt": "2026-07-31T00:58:54.246Z"
+}

@@ -1074,6 +1074,45 @@ contract KimiMintToken is ERC20, Ownable {
         }
     }
 
+    function _swapBackNative(
+        uint256 platformTokens,
+        uint256 marketingTokens,
+        uint256 liquidityHalf,
+        uint256 nativeSwapTokens
+    )
+        external
+        returns (uint256 nativeReceived)
+    {
+        uint256 nativeBefore = address(this).balance;
+        _swapTokensForNative(nativeSwapTokens);
+        nativeReceived = address(this).balance - nativeBefore;
+
+        uint256 nativeForPlatform = (nativeReceived * platformTokens) / nativeSwapTokens;
+        uint256 nativeForMarketing = (nativeReceived * marketingTokens) / nativeSwapTokens;
+        uint256 nativeForLiquidity = nativeReceived - nativeForPlatform - nativeForMarketing;
+
+        if (nativeForPlatform > 0) {
+            totalPlatformRouted += nativeForPlatform;
+            _sendNative(platformFeeReceiver, nativeForPlatform);
+        }
+        if (nativeForMarketing > 0) {
+            totalMarketingRouted += nativeForMarketing;
+            _sendNative(receiver, nativeForMarketing);
+        }
+        if (liquidityHalf > 0 && nativeForLiquidity > 0) {
+            _addLiquidity(liquidityHalf, nativeForLiquidity);
+        }
+    }
+
+    function _swapBackDividend(
+        uint256 dividendTokens
+    )
+        external
+        returns (uint256 rewardReceived)
+    {
+        rewardReceived = _swapTokensForReward(dividendTokens);
+    }
+
     function _swapBack(
         uint256 platformTokens,
         uint256 marketingTokens,
@@ -1089,35 +1128,37 @@ contract KimiMintToken is ERC20, Ownable {
         uint256 nativeReceived;
         uint256 rewardReceived;
 
+        // 独立 try/catch — 原生币兑换失败不影响分红
         if (nativeSwapTokens > 0) {
-            uint256 nativeBefore = address(this).balance;
-            _swapTokensForNative(nativeSwapTokens);
-            nativeReceived = address(this).balance - nativeBefore;
-
-            uint256 nativeForPlatform = (nativeReceived * platformTokens) / nativeSwapTokens;
-            uint256 nativeForMarketing = (nativeReceived * marketingTokens) / nativeSwapTokens;
-            uint256 nativeForLiquidity = nativeReceived - nativeForPlatform - nativeForMarketing;
-
-            if (nativeForPlatform > 0) {
-                totalPlatformRouted += nativeForPlatform;
-                _sendNative(platformFeeReceiver, nativeForPlatform);
+            try this._swapBackNative(
+                platformTokens,
+                marketingTokens,
+                liquidityHalf,
+                nativeSwapTokens
+            )
+                returns (uint256 nr)
+            {
+                nativeReceived = nr;
             }
-            if (nativeForMarketing > 0) {
-                totalMarketingRouted += nativeForMarketing;
-                _sendNative(receiver, nativeForMarketing);
-            }
-            if (liquidityHalf > 0 && nativeForLiquidity > 0) {
-                _addLiquidity(liquidityHalf, nativeForLiquidity);
-            }
+            catch {}
         }
 
+        // 独立 try/catch — 分红兑换失败不影响其他
         if (dividendTokens > 0) {
-            rewardReceived = _swapTokensForReward(dividendTokens);
-            if (rewardReceived > 0) {
-                IERC20(rewardToken).safeTransfer(address(dividendDistributor), rewardReceived);
-                dividendDistributor.deposit(rewardReceived);
-                totalDividendsDeposited += rewardReceived;
+            try this._swapBackDividend(dividendTokens)
+                returns (uint256 rr)
+            {
+                rewardReceived = rr;
+                if (rewardReceived > 0) {
+                    IERC20(rewardToken).safeTransfer(
+                        address(dividendDistributor),
+                        rewardReceived
+                    );
+                    dividendDistributor.deposit(rewardReceived);
+                    totalDividendsDeposited += rewardReceived;
+                }
             }
+            catch {}
         }
 
         emit SwapBack(

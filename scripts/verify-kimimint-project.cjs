@@ -1,13 +1,18 @@
+// KimiMint auto-verify script (standalone — called by kimimint-backend.mjs)
+// Prioritizes Etherscan v2 API, falls back to Hardhat verify.
 require("dotenv").config();
 
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
+const http = require("node:http");
 const https = require("node:https");
 const path = require("node:path");
 const { AbiCoder, Contract, JsonRpcProvider, getAddress, isAddress } = require("ethers");
 
 const rootDir = process.cwd();
-const factoryArtifact = readJson("artifacts/contracts/mint/KimiMintLaunchFactory.sol/KimiMintLaunchFactory.json");
+const factoryArtifact = readJson(
+  "artifacts/contracts/mint/KimiMintLaunchFactory.sol/KimiMintLaunchFactory.json",
+);
 const tokenAbi = [
   "function name() view returns (string)",
   "function symbol() view returns (string)",
@@ -32,21 +37,132 @@ const factoryAddress = readAddress(
   "FACTORY_ADDRESS or VITE_MINT_FACTORY_ADDRESS",
 );
 const tokenAddress = readTokenAddress();
-const rpcUrl =
-  process.env.BSC_RPC_URL ||
-  process.env.KIMIMINT_RPC_URL ||
-  (networkName === "bscTestnet" ? process.env.BSC_TESTNET_RPC_URL : "") ||
-  "https://bsc.publicnode.com";
-const chainId = Number(process.env.KIMIMINT_CHAIN_ID || process.env.VITE_MINT_CHAIN_ID || process.env.VITE_CHAIN_ID || (networkName === "bscTestnet" ? 97 : 56));
-const provider = new JsonRpcProvider(rpcUrl, chainId);
-const factory = new Contract(factoryAddress, factoryArtifact.abi, provider);
+const chainId = Number(
+  process.env.KIMIMINT_CHAIN_ID ||
+    process.env.VITE_MINT_CHAIN_ID ||
+    process.env.VITE_CHAIN_ID ||
+    (networkName === "bscTestnet" ? 97 : 56),
+);
 
+const fallbackRpcUrls = [
+  process.env.BSC_RPC_URL || "",
+  process.env.KIMIMINT_RPC_URL || "",
+  networkName === "bscTestnet" ? process.env.BSC_TESTNET_RPC_URL || "" : "",
+  "https://bsc-dataseed.binance.org/",
+  "https://bsc-dataseed1.defibit.io/",
+  "https://bsc-dataseed1.ninicoin.io/",
+  "https://rpc-bsc.48.club",
+  "https://bsc-mainnet.public.blastapi.io",
+].filter(Boolean);
+
+async function getWorkingProvider() {
+  const errors = [];
+  for (const url of fallbackRpcUrls) {
+    try {
+      const provider = new JsonRpcProvider(url, chainId);
+      await provider.getBlockNumber();
+      console.log(`Using RPC: ${url}`);
+      return provider;
+    } catch (err) {
+      errors.push(`${url}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  throw new Error(`所有 BSC RPC 都失败:\n${errors.join("\n")}`);
+}
+
+
+
+// ---- Proxy agent for Node.js HTTPS (via https-proxy-agent) ----
+const { HttpsProxyAgent } = (() => {
+  try { return require("https-proxy-agent"); } catch { return { HttpsProxyAgent: null }; }
+})();
+
+function createProxyAgent() {
+  const proxyUrl = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || "";
+  if (!proxyUrl || !HttpsProxyAgent) return undefined;
+  return new HttpsProxyAgent(proxyUrl);
+}
+
+// ---- Etherscan v2 API helpers ----
+function requestJson({ method, url, query = {}, body = null }) {
+  return new Promise((resolve, reject) => {
+    const target = new URL(url);
+    for (const [key, value] of Object.entries(query)) {
+      if (value !== undefined && value !== "") {
+        target.searchParams.set(key, String(value));
+      }
+    }
+    const payload = body ? new URLSearchParams(body).toString() : "";
+    const agent = createProxyAgent();
+    const transport = target.protocol === "https:" ? https : http;
+    const request = transport.request(
+      target,
+      {
+        method,
+        agent,
+        headers: payload
+          ? {
+              "content-type": "application/x-www-form-urlencoded",
+              "content-length": Buffer.byteLength(payload),
+            }
+          : {},
+      },
+      (response) => {
+        let raw = "";
+        response.setEncoding("utf8");
+        response.on("data", (chunk) => {
+          raw += chunk;
+        });
+        response.on("end", () => {
+          try {
+            resolve(JSON.parse(raw));
+          } catch {
+            reject(new Error(`Invalid explorer response: ${raw.slice(0, 240)}`));
+          }
+        });
+      },
+    );
+    request.on("error", reject);
+    request.setTimeout(120000, () => request.destroy(new Error("Explorer request timed out.")));
+    if (payload) {
+      request.write(payload);
+    }
+    request.end();
+  });
+}
+
+// ---- Full standard-json-input (pre-generated with all dependencies) ----
+function loadSourceCode() {
+  const candidates = [
+    path.join(rootDir, "work", "full-standard-json-input.json"),
+    path.join(rootDir, "standard-json-input.json"),
+  ];
+  for (const filePath of candidates) {
+    if (fs.existsSync(filePath)) {
+      return fs.readFileSync(filePath, "utf8");
+    }
+  }
+  // Fallback: use build-info from artifacts (may be incomplete for v2 API)
+  const buildInfoDir = path.join(rootDir, "artifacts", "build-info");
+  if (fs.existsSync(buildInfoDir)) {
+    const files = fs.readdirSync(buildInfoDir).filter((f) => f.endsWith(".json"));
+    if (files.length > 0) {
+      const raw = fs.readFileSync(path.join(buildInfoDir, files[0]), "utf8");
+      return JSON.stringify(JSON.parse(raw).input);
+    }
+  }
+  throw new Error("No standard-json-input found. Run npm run contracts:compile first.");
+}
+
+// ---- Main ----
 main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
 
 async function main() {
+  const provider = await getWorkingProvider();
+  const factory = new Contract(factoryAddress, factoryArtifact.abi, provider);
   const project = await factory.getProject(tokenAddress);
   if (String(project.token).toLowerCase() !== tokenAddress.toLowerCase()) {
     throw new Error(`Token ${tokenAddress} is not indexed in Factory ${factoryAddress}.`);
@@ -134,9 +250,24 @@ function readTokenAddress() {
 
 async function verifyOne({ address, constructorArgs, constructorArgsPath, contract, label }) {
   console.log(`Verifying ${label}: ${address}`);
+
+  // Primary: Etherscan v2 API (fast, direct)
+  if (process.env.BSCSCAN_API_KEY || process.env.ETHERSCAN_API_KEY) {
+    try {
+      await verifyWithEtherscanV2({ address, constructorArgs, contract, label });
+      return;
+    } catch (error) {
+      console.warn(`Etherscan v2 verify failed for ${label}; retrying with Hardhat verify.`);
+      console.warn(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  // Fallback: Hardhat verify
   try {
     await runCommand("npx", [
       "hardhat",
+      "--config",
+      "hardhat.config.cjs",
       "verify",
       "--network",
       networkName,
@@ -147,31 +278,34 @@ async function verifyOne({ address, constructorArgs, constructorArgsPath, contra
       address,
     ]);
   } catch (error) {
-    if (!process.env.BSCSCAN_API_KEY && !process.env.ETHERSCAN_API_KEY) {
-      throw error;
-    }
-    console.warn(`Hardhat verify failed for ${label}; retrying with Etherscan v2 API.`);
-    console.warn(error instanceof Error ? error.message : String(error));
-    await verifyWithEtherscanV2({ address, constructorArgs, contract, label });
+    throw error;
   }
 }
 
 async function verifyWithEtherscanV2({ address, constructorArgs, contract, label }) {
   const [sourceName, contractName] = contract.split(":");
-  const artifactPath = path.join(rootDir, "artifacts", sourceName, `${contractName}.json`);
-  const dbgPath = path.join(rootDir, "artifacts", sourceName, `${contractName}.dbg.json`);
-  const artifact = readJson(path.relative(rootDir, artifactPath));
-  const dbg = readJson(path.relative(rootDir, dbgPath));
+  const artifactDir = path.join(rootDir, "artifacts", sourceName);
+  const artifact = readJson(path.join("artifacts", sourceName, `${contractName}.json`));
+  const dbg = readJson(path.join("artifacts", sourceName, `${contractName}.dbg.json`));
   const buildInfoRef = String(dbg.buildInfo || "").replace(/\\/g, "/");
-  const buildInfoPath = path.resolve(path.dirname(dbgPath), buildInfoRef);
+  const buildInfoPath = path.resolve(artifactDir, buildInfoRef);
   const buildInfo = JSON.parse(fs.readFileSync(buildInfoPath, "utf8"));
-  const compilerVersion = String(buildInfo.solcLongVersion || "").startsWith("v")
-    ? buildInfo.solcLongVersion
-    : `v${buildInfo.solcLongVersion}`;
+  const longVersion = String(buildInfo.solcLongVersion || "");
+  const versionMatch = longVersion.match(/^(\d+\.\d+\.\d+\+commit\.[a-f0-9]+)/i);
+  const compilerVersion = versionMatch ? `v${versionMatch[1]}` : `v${buildInfo.solcVersion || "0.8.36"}`;
   const encodedArgs = encodeConstructorArgs(artifact.abi, constructorArgs);
-  const apiUrl = process.env.ETHERSCAN_V2_API_URL || "https://api.etherscan.io/v2/api";
+  const optimizerSettings = buildInfo?.input?.settings?.optimizer || {};
+  const optimizationUsed = optimizerSettings.enabled ? "1" : "0";
+  const optimizerRuns = String(optimizerSettings.runs ?? "200");
+
+  // Use the PRE-GENERATED full standard-json-input (with all deps at correct import paths)
+  const sourceCode = loadSourceCode();
+
+  const apiUrl = process.env.ETHERSCAN_V2_API_URL || "https://api.etherscan.com/v2/api";
   const apiKey = process.env.ETHERSCAN_API_KEY || process.env.BSCSCAN_API_KEY || "";
-  const verifyChainId = String(process.env.ETHERSCAN_CHAIN_ID || process.env.BSCSCAN_CHAIN_ID || chainId);
+  const verifyChainId = String(
+    process.env.ETHERSCAN_CHAIN_ID || process.env.BSCSCAN_CHAIN_ID || chainId,
+  );
 
   const submit = await requestJson({
     method: "POST",
@@ -182,12 +316,12 @@ async function verifyWithEtherscanV2({ address, constructorArgs, contract, label
       action: "verifysourcecode",
       apikey: apiKey,
       contractaddress: address,
-      sourceCode: JSON.stringify(buildInfo.input),
+      sourceCode,
       codeformat: "solidity-standard-json-input",
       contractname: contract,
       compilerversion: compilerVersion,
-      optimizationUsed: "1",
-      runs: "1",
+      optimizationUsed,
+      runs: optimizerRuns,
       constructorArguements: encodedArgs,
       licenseType: "3",
     },
@@ -199,7 +333,9 @@ async function verifyWithEtherscanV2({ address, constructorArgs, contract, label
       console.log(`${label} already verified.`);
       return;
     }
-    throw new Error(`Etherscan v2 submit failed for ${label}: ${submit.message || ""} ${result}`);
+    throw new Error(
+      `Etherscan v2 submit failed for ${label}: ${submit.message || ""} ${result}`,
+    );
   }
 
   const guid = String(submit.result || "");
@@ -236,7 +372,12 @@ function encodeConstructorArgs(abi, args) {
   if (inputs.length === 0) {
     return "";
   }
-  return AbiCoder.defaultAbiCoder().encode(inputs.map(abiParamType), args).replace(/^0x/, "");
+  return AbiCoder.defaultAbiCoder()
+    .encode(
+      inputs.map(abiParamType),
+      args,
+    )
+    .replace(/^0x/, "");
 }
 
 function abiParamType(input) {
@@ -247,56 +388,14 @@ function abiParamType(input) {
   return input.type;
 }
 
-function requestJson({ method, url, query = {}, body = null }) {
-  return new Promise((resolve, reject) => {
-    const target = new URL(url);
-    for (const [key, value] of Object.entries(query)) {
-      if (value !== undefined && value !== "") {
-        target.searchParams.set(key, String(value));
-      }
-    }
-    const payload = body ? new URLSearchParams(body).toString() : "";
-    const request = https.request(
-      target,
-      {
-        method,
-        headers: payload
-          ? {
-              "content-type": "application/x-www-form-urlencoded",
-              "content-length": Buffer.byteLength(payload),
-            }
-          : {},
-      },
-      (response) => {
-        let raw = "";
-        response.setEncoding("utf8");
-        response.on("data", (chunk) => {
-          raw += chunk;
-        });
-        response.on("end", () => {
-          try {
-            resolve(JSON.parse(raw));
-          } catch {
-            reject(new Error(`Invalid explorer response: ${raw.slice(0, 240)}`));
-          }
-        });
-      },
-    );
-    request.on("error", reject);
-    request.setTimeout(120000, () => request.destroy(new Error("Explorer request timed out.")));
-    if (payload) {
-      request.write(payload);
-    }
-    request.end();
-  });
-}
-
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function writeArgsFile(filePath, args) {
-  const normalized = JSON.stringify(args, (_key, value) => (typeof value === "bigint" ? value.toString() : value));
+  const normalized = JSON.stringify(args, (_key, value) =>
+    typeof value === "bigint" ? value.toString() : value,
+  );
   fs.writeFileSync(filePath, `module.exports = ${normalized};\n`);
 }
 
@@ -314,7 +413,7 @@ function readJson(filePath, fallback) {
     if (fallback !== undefined) {
       return fallback;
     }
-    throw new Error(`Missing ${filePath}. Run npm run hardhat:compile first.`);
+    throw new Error(`Missing ${filePath}. Run npm run contracts:compile first.`);
   }
 }
 

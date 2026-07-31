@@ -16,7 +16,7 @@ const contracts = [
 ];
 
 function readSoliditySource(filePath) {
-  return fs.readFileSync(filePath, "utf8").replace(/\r\n?/g, "\n");
+  return fs.readFileSync(filePath, "utf8");
 }
 
 const input = {
@@ -30,6 +30,7 @@ const input = {
     outputSelection: {
       "*": { "*": ["abi", "evm.bytecode.object", "evm.deployedBytecode.object"] },
     },
+    metadata: { useLiteralContent: true },
   },
 };
 
