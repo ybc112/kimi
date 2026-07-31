@@ -1,0 +1,51 @@
+import { Contract, Interface, getAddress, isAddress, parseEther, type Signer } from "ethers";
+import type { NFTLaunchDraft } from "./types";
+
+export const NFT_FACTORY_ADDRESS = String(import.meta.env.VITE_NFT_FACTORY_ADDRESS || "").trim();
+export const NFT_CREATION_FEE = parseEther(String(import.meta.env.VITE_NFT_CREATION_FEE_BNB || "0.01"));
+export const nftFactoryAbi = [
+  "function createNFTLaunch(string name,string symbol,string description,string imageURI,string baseURI,string metadataURI,uint256 maxSupply,uint256 mintPrice,uint256 maxMintPerWallet,bytes32 salt) payable returns (address collection)",
+  "function allCollectionsLength() view returns (uint256)", "function allCollections(uint256) view returns (address)",
+  "function projects(address) view returns (address creator,address collection,string description,string imageURI,string metadataURI,uint64 createdAt)",
+  "event NFTLaunchCreated(address indexed creator,address indexed collection,string name,string symbol,uint256 maxSupply,uint256 mintPrice,string metadataURI)",
+] as const;
+export const nftCollectionAbi = ["function mint(uint256 quantity) payable", "function name() view returns (string)", "function symbol() view returns (string)", "function totalMinted() view returns (uint256)", "function maxSupply() view returns (uint256)"] as const;
+export const isNFTLaunchpadConfigured = isAddress(NFT_FACTORY_ADDRESS);
+const backendUrl = String(import.meta.env.VITE_NFT_BACKEND_URL || import.meta.env.VITE_MINT_BACKEND_URL || "").trim().replace(/\/+$/, "");
+
+export async function uploadNFTAsset(dataUrl: string): Promise<string> {
+  if (!/^data:image\/(?:png|jpeg|jpg|webp|gif|svg\+xml);base64,/i.test(dataUrl)) throw new Error("NFT 图片格式无效");
+  if (!backendUrl) throw new Error("NFT 资产服务未配置，请设置 VITE_NFT_BACKEND_URL");
+  const response = await fetch(`${backendUrl}/api/assets`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ dataUrl }) });
+  if (!response.ok) throw new Error("NFT 图片上传失败，请稍后重试");
+  const result = await response.json() as { url?: string };
+  if (!result.url) throw new Error("NFT 图片服务返回地址为空");
+  return result.url;
+}
+export async function createNFTLaunch(signer: Signer, draft: NFTLaunchDraft) {
+  if (!isNFTLaunchpadConfigured) throw new Error("NFT Factory 尚未配置，请部署 Factory 后设置 VITE_NFT_FACTORY_ADDRESS");
+  if (!draft.name.trim() || !draft.symbol.trim() || !draft.baseURI.trim()) throw new Error("请填写名称、Symbol 和 Base URI");
+  const maxSupply = BigInt(draft.maxSupply); const maxWallet = BigInt(draft.maxMintPerWallet);
+  if (maxSupply <= 0n || maxSupply > 1000000n || maxWallet <= 0n || maxWallet > maxSupply) throw new Error("供应量或钱包上限无效");
+  const factory = new Contract(NFT_FACTORY_ADDRESS, nftFactoryAbi, signer);
+  const salt = "0x" + crypto.getRandomValues(new Uint8Array(32)).reduce((s, b) => s + b.toString(16).padStart(2, "0"), "");
+  const tx = await factory.createNFTLaunch(draft.name.trim(), draft.symbol.trim().toUpperCase(), draft.description.trim(), draft.imageURI.trim(), draft.baseURI.trim(), draft.metadataURI.trim(), maxSupply, parseEther(draft.mintPrice || "0"), maxWallet, salt, { value: NFT_CREATION_FEE });
+  const receipt = await tx.wait();
+  const parsed = new Interface(nftFactoryAbi);
+  let collection = "";
+  for (const log of receipt?.logs || []) {
+    try {
+      const event = parsed.parseLog(log);
+      if (event?.name === "NFTLaunchCreated") collection = getAddress(String(event.args.collection));
+    } catch {
+      // A receipt can contain ERC-721 and native transfer logs that do not belong to the Factory ABI.
+    }
+  }
+  return { hash: tx.hash, collection };
+}
+export async function mintNFT(signer: Signer, collection: string, quantity: string, mintPrice: string) {
+  if (!isAddress(collection)) throw new Error("NFT 合集地址无效");
+  const amount = BigInt(quantity); if (amount <= 0n) throw new Error("铸造数量无效");
+  const tx = await new Contract(collection, nftCollectionAbi, signer).mint(amount, { value: parseEther(mintPrice || "0") * amount });
+  await tx.wait(); return tx.hash as string;
+}

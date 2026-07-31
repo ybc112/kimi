@@ -16,6 +16,7 @@
     "secrets:check": "node scripts/check-secrets.mjs",
     "kimimint:backend": "node server/kimimint-backend.mjs",
     "kimimint:verify:project": "node scripts/verify-kimimint-project.cjs",
+    "nft:deploy:bsc": "hardhat run scripts/deploy-nft-factory.cjs --network bsc",
     "verify": "npm run secrets:check && npm run check && npm run lint && npm run test && npm run contracts:compile && npm run templates:check && npm run build"
   },
   "dependencies": {

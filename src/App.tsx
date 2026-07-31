@@ -17,6 +17,8 @@ const TokenAudit = lazy(() => import("@/pages/TokenAudit"));
 const MintLaunch = lazy(() => import("@/pages/MintLaunch"));
 const MintLaunches = lazy(() => import("@/pages/MintLaunches"));
 const MintProjectDetail = lazy(() => import("@/pages/MintProjectDetail"));
+const NFTLaunch = lazy(() => import("@/pages/NFTLaunch"));
+const NFTLaunches = lazy(() => import("@/pages/NFTLaunches"));
 
 function PageLoading() {
   return (
@@ -48,6 +50,8 @@ export default function App() {
             <Route path="/mint-launch" element={<MintLaunch />} />
             <Route path="/mint-launches" element={<MintLaunches />} />
             <Route path="/mint-project/:token" element={<MintProjectDetail />} />
+            <Route path="/nft-launch" element={<NFTLaunch />} />
+            <Route path="/nft-launches" element={<NFTLaunches />} />
           </Routes>
         </Suspense>
       </Layout>

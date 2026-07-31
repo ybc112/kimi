@@ -13,6 +13,8 @@ const contracts = [
   { entry: "contracts/mint/KimiMintDeployers.sol", contractName: "KimiMintTokenDeployer" },
   { entry: "contracts/mint/KimiMintDeployers.sol", contractName: "KimiMintVaultDeployer" },
   { entry: "contracts/mint/KimiMintAuditRegistry.sol", contractName: "KimiMintAuditRegistry" },
+  { entry: "contracts/nft/KimiNFTCollection.sol", contractName: "KimiNFTCollection" },
+  { entry: "contracts/nft/KimiNFTLaunchFactory.sol", contractName: "KimiNFTLaunchFactory" },
 ];
 
 function readSoliditySource(filePath) {

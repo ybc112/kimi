@@ -18,6 +18,7 @@ import {
   MoreHorizontal,
   Zap,
   Shield,
+  Images,
 } from "lucide-react";
 import { KimiIcon } from "@/components/KimiIcon";
 import { useWallet } from "@/hooks/useWallet";
@@ -31,6 +32,8 @@ const mainNavItems = [
   { to: "/flap-launch", icon: CircleDollarSign, label: "Flap 发币" },
   { to: "/mint-launch", icon: Rocket, label: "Mint 发射台" },
   { to: "/mint-launches", icon: List, label: "Mint 已发射" },
+  { to: "/nft-launch", icon: Images, label: "NFT 发射台" },
+  { to: "/nft-launches", icon: List, label: "NFT 合集" },
   { to: "/issued-tokens", icon: List, label: "已发代币" },
   { to: "/token-audit", icon: Shield, label: "安全检测" },
 ];
