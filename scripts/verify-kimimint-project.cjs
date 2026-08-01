@@ -312,7 +312,7 @@ async function verifyWithEtherscanV2({ address, constructorArgs, contract, label
 
   // Submit the exact compiler input linked by this artifact. Adding unrelated
   // sources changes Solidity metadata and makes the creation bytecode differ.
-  const sourceCode = JSON.stringify(buildInfo.input);
+  const sourceCode = JSON.stringify(buildVerificationInput({ artifact, buildInfo, sourceName }));
 
   const apiUrl = process.env.ETHERSCAN_V2_API_URL || "https://api.etherscan.com/v2/api";
   const apiKey = process.env.ETHERSCAN_API_KEY || process.env.BSCSCAN_API_KEY || "";
@@ -377,6 +377,22 @@ async function verifyWithEtherscanV2({ address, constructorArgs, contract, label
   }
 
   throw new Error(`Etherscan v2 verify timed out for ${label}.`);
+}
+
+function buildVerificationInput({ artifact, buildInfo, sourceName }) {
+  const metadata = JSON.parse(artifact.metadata || "{}");
+  const sourceNames = Object.keys(metadata.sources || {});
+  if (!sourceNames.includes(sourceName)) {
+    throw new Error(`Artifact metadata does not include ${sourceName}.`);
+  }
+  const sources = {};
+  for (const name of sourceNames) {
+    const candidates = [path.join(rootDir, name), path.join(rootDir, "node_modules", name)];
+    const filePath = candidates.find((candidate) => fs.existsSync(candidate));
+    if (!filePath) throw new Error(`Verification source not found: ${name}`);
+    sources[name] = { content: fs.readFileSync(filePath, "utf8").replace(/\r\n?/g, "\n") };
+  }
+  return { ...buildInfo.input, sources };
 }
 
 function encodeConstructorArgs(abi, args) {
