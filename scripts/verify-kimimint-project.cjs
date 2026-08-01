@@ -383,16 +383,16 @@ function buildVerificationInput({ artifact, buildInfo, sourceName }) {
   const compiledContract = buildInfo.output?.contracts?.[sourceName]?.[artifact.contractName];
   const metadata = JSON.parse(artifact.metadata || compiledContract?.metadata || "{}");
   const sourceNames = Object.keys(metadata.sources || {});
-  const sources = {};
-  const pending = sourceNames.length ? sourceNames : [sourceName];
+  const sources = { ...(buildInfo.input.sources || {}) };
+  const pending = sourceNames.length ? sourceNames : Object.keys(sources);
   while (pending.length) {
     const name = pending.pop();
-    if (!name || sources[name]) continue;
+    if (!name) continue;
     const candidates = [path.join(rootDir, name), path.join(rootDir, "node_modules", name)];
     const filePath = candidates.find((candidate) => fs.existsSync(candidate));
     if (!filePath) throw new Error(`Verification source not found: ${name}`);
-    const content = fs.readFileSync(filePath, "utf8").replace(/\r\n?/g, "\n");
-    sources[name] = { content };
+    const content = sources[name]?.content || fs.readFileSync(filePath, "utf8").replace(/\r\n?/g, "\n");
+    if (!sources[name]) sources[name] = { content };
     const baseDir = path.posix.dirname(name);
     for (const match of content.matchAll(/import\s+(?:(?:\{[^}]*\}|[^;{]+)\s+from\s+)?["']([^"']+)["'];/g)) {
       pending.push(match[1].startsWith(".") ? path.posix.normalize(path.posix.join(baseDir, match[1])) : match[1]);
