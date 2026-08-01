@@ -4,6 +4,11 @@ import tsconfigPaths from "vite-tsconfig-paths";
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => ({
+  server: {
+    headers: {
+      "Cache-Control": "no-store",
+    },
+  },
   build: {
     sourcemap: false,
     rollupOptions: {
