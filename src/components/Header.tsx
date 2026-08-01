@@ -32,15 +32,15 @@ const mainNavItems = [
   { to: "/deploy", icon: Rocket, label: "合约部署" },
   { to: "/flap-launch", icon: CircleDollarSign, label: "Flap 发币" },
   { to: "/mint-launch", icon: Rocket, label: "Mint 发射台" },
-  { to: "/mint-launches", icon: List, label: "Mint 已发射" },
   { to: "/swap", icon: ArrowUpDown, label: "Swap" },
   { to: "/nft-launch", icon: Images, label: "NFT 发射台" },
-  { to: "/nft-launches", icon: List, label: "NFT 合集" },
-  { to: "/issued-tokens", icon: List, label: "已发代币" },
-  { to: "/token-audit", icon: Shield, label: "安全检测" },
 ];
 
 const moreNavItems = [
+  { to: "/mint-launches", icon: List, label: "Mint 已发射" },
+  { to: "/nft-launches", icon: Images, label: "NFT 合集" },
+  { to: "/issued-tokens", icon: List, label: "已发代币" },
+  { to: "/token-audit", icon: Shield, label: "安全检测" },
   { to: "/page-builder", icon: Wand2, label: "AI 网页" },
   { to: "/trending", icon: TrendingUp, label: "热搜榜" },
   { to: "/docs", icon: FileText, label: "规范文档" },
@@ -93,7 +93,7 @@ export function Header() {
   return (
     <>
       <header className="sticky top-0 z-40 w-full border-b border-[#25282C] bg-[#0A0B0D]/90 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-[1600px] items-center justify-between px-4 lg:px-6">
+        <div className="mx-auto flex h-16 max-w-[1800px] items-center gap-4 px-4 lg:px-6">
           {/* Logo */}
           <NavLink to="/" className="flex items-center gap-3 shrink-0">
             <KimiIcon size={36} className="h-9 w-9 rounded-xl" />
@@ -104,14 +104,14 @@ export function Header() {
           </NavLink>
 
           {/* Desktop Nav */}
-          <nav className="hidden xl:flex items-center gap-1">
+          <nav className="hidden min-w-0 flex-1 items-center justify-center gap-0.5 xl:flex">
             {mainNavItems.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
                 className={({ isActive }) =>
                   cn(
-                    "relative flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
+                    "relative flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl px-2.5 py-2 text-sm font-medium transition-colors 2xl:px-3",
                     isActive
                       ? "text-[#D0FF00]"
                       : "text-[#9CA3AF] hover:bg-[#1A1D21] hover:text-white"
@@ -135,7 +135,7 @@ export function Header() {
               <button
                 onClick={() => setMoreOpen((v) => !v)}
                 className={cn(
-                  "relative flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
+                  "relative flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl px-2.5 py-2 text-sm font-medium transition-colors 2xl:px-3",
                   isMoreActive ? "text-[#D0FF00]" : "text-[#9CA3AF] hover:bg-[#1A1D21] hover:text-white"
                 )}
               >
@@ -148,7 +148,7 @@ export function Header() {
               </button>
 
               {moreOpen && (
-                <div className="absolute right-0 top-full mt-2 w-48 rounded-xl border border-[#25282C] bg-[#111215] p-2 shadow-xl">
+                <div className="absolute right-0 top-full mt-2 grid w-[360px] grid-cols-2 gap-1 rounded-2xl border border-[#25282C] bg-[#111215] p-2 shadow-2xl shadow-black/40">
                   {moreNavItems.map((item) => (
                     <NavLink
                       key={item.to}
@@ -173,8 +173,8 @@ export function Header() {
           </nav>
 
           {/* Right side status & wallet */}
-          <div className="flex items-center gap-3 lg:gap-4">
-            <div className="hidden md:flex items-center gap-3 text-xs text-[#6B7280]">
+          <div className="ml-auto flex shrink-0 items-center gap-2 2xl:gap-3">
+            <div className="hidden items-center gap-2 text-xs text-[#6B7280] 2xl:flex">
               <span>v1.0</span>
               <span className="flex items-center gap-1.5 rounded-full border border-[#25282C] bg-[#111215] px-2.5 py-1">
                 <span className="h-1.5 w-1.5 rounded-full bg-[#2EDEDB] animate-pulse" />
@@ -186,7 +186,7 @@ export function Header() {
               <button
                 onClick={wallet.connectWallet}
                 disabled={wallet.loading}
-                className="flex items-center gap-2 rounded-xl bg-[#D0FF00] px-4 py-2 text-sm font-semibold text-black transition-all hover:brightness-110 hover:scale-[1.02] disabled:opacity-50"
+                className="flex items-center gap-2 whitespace-nowrap rounded-xl bg-[#D0FF00] px-3 py-2 text-sm font-semibold text-black transition-all hover:scale-[1.02] hover:brightness-110 disabled:opacity-50 2xl:px-4"
               >
                 {wallet.loading ? (
                   <span className="h-4 w-4 animate-spin rounded-full border-2 border-black/20 border-t-black" />
