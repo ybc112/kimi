@@ -31,9 +31,22 @@ export async function queueNFTVerification(collection: string) {
   if (!response.ok) return { ok: false, skipped: true };
   return response.json() as Promise<{ ok: boolean; collection?: string }>;
 }
+
+export async function prepareNFTMetadata(draft: NFTLaunchDraft) {
+  if (!draft.imageURI.trim()) throw new Error("请先生成或上传 NFT 图片");
+  const response = await fetch(`${backendUrl}/api/nft/metadata`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name: draft.name.trim(), description: draft.description.trim(), image: draft.imageURI.trim() }),
+  });
+  if (!response.ok) throw new Error("NFT 元数据生成失败，请稍后重试");
+  const result = await response.json() as { baseURI?: string; metadataURI?: string };
+  if (!result.baseURI || !result.metadataURI) throw new Error("NFT 元数据服务返回不完整");
+  return { ...draft, baseURI: result.baseURI, metadataURI: result.metadataURI };
+}
 export async function createNFTLaunch(signer: Signer, draft: NFTLaunchDraft) {
   if (!isNFTLaunchpadConfigured) throw new Error("NFT Factory 尚未配置，请部署 Factory 后设置 VITE_NFT_FACTORY_ADDRESS");
-  if (!draft.name.trim() || !draft.symbol.trim() || !draft.baseURI.trim()) throw new Error("请填写名称、Symbol 和 Base URI");
+  if (!draft.name.trim() || !draft.symbol.trim() || !draft.baseURI.trim()) throw new Error("请填写名称、Symbol，并生成 NFT 元数据");
   const maxSupply = BigInt(draft.maxSupply); const maxWallet = BigInt(draft.maxMintPerWallet);
   if (maxSupply <= 0n || maxSupply > 1000000n || maxWallet <= 0n || maxWallet > maxSupply) throw new Error("供应量或钱包上限无效");
   const factory = new Contract(NFT_FACTORY_ADDRESS, nftFactoryAbi, signer);

@@ -69,6 +69,7 @@ const verifyRateLimit = Number(process.env.KIMIMINT_VERIFY_RATE_LIMIT || 30);
 const vanityRateLimit = Number(process.env.KIMIMINT_VANITY_RATE_LIMIT || 8);
 const assetRateLimit = Number(process.env.KIMIMINT_ASSET_RATE_LIMIT || 20);
 const assetDir = path.resolve(process.env.KIMIMINT_ASSET_DIR || path.join(rootDir, "work", "assets"));
+const nftMetadataDir = path.resolve(process.env.KIMINFT_METADATA_DIR || path.join(rootDir, "work", "nft-metadata"));
 const jobs = new Map();
 const rateBuckets = new Map();
 let lastTokenCount = 0;
@@ -125,6 +126,18 @@ const server = createServer(async (request, response) => {
       await assertFactoryProject(token);
       queueVerify(token, "api");
       sendJson(response, 202, { ok: true, token, job: jobs.get(token.toLowerCase()) });
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname.startsWith("/api/nft/metadata/")) {
+      await sendNFTMetadata(response, url.pathname);
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/nft/metadata") {
+      limitRequest(request, "asset", assetRateLimit);
+      const body = await readBody(request);
+      sendJson(response, 201, { ok: true, ...saveNFTMetadata(body, request) });
       return;
     }
 
@@ -500,6 +513,45 @@ async function sendAsset(response, pathname) {
     "cache-control": "public, max-age=31536000, immutable",
   });
   fs.createReadStream(filePath).pipe(response);
+}
+
+function saveNFTMetadata(body, request) {
+  const name = String(body.name || "").trim().slice(0, 120);
+  const description = String(body.description || "").trim().slice(0, 2000);
+  const image = String(body.image || "").trim();
+  if (!name || !/^https:\/\//i.test(image)) {
+    throw new Error("NFT name and public image URL are required.");
+  }
+
+  const payload = { name, description, image };
+  const id = createHash("sha256").update(JSON.stringify(payload)).digest("hex").slice(0, 32);
+  fs.mkdirSync(nftMetadataDir, { recursive: true });
+  fs.writeFileSync(path.join(nftMetadataDir, `${id}.json`), JSON.stringify(payload));
+  const base = `${publicBaseUrl(request)}/api/nft/metadata/${id}`;
+  return { id, baseURI: `${base}/`, metadataURI: `${base}/collection.json` };
+}
+
+async function sendNFTMetadata(response, pathname) {
+  const match = /^\/api\/nft\/metadata\/([0-9a-f]{32})\/(collection|[1-9][0-9]*)\.json$/i.exec(pathname);
+  if (!match) {
+    sendJson(response, 404, { error: "Not found" });
+    return;
+  }
+
+  const filePath = path.join(nftMetadataDir, `${match[1].toLowerCase()}.json`);
+  if (!fs.existsSync(filePath)) {
+    sendJson(response, 404, { error: "Not found" });
+    return;
+  }
+
+  const stored = JSON.parse(fs.readFileSync(filePath, "utf8"));
+  const tokenId = match[2] === "collection" ? "" : match[2];
+  sendJson(response, 200, {
+    name: tokenId ? `${stored.name} #${tokenId}` : stored.name,
+    description: stored.description,
+    image: stored.image,
+    ...(tokenId ? { attributes: [{ trait_type: "Token ID", value: Number(tokenId) }] } : {}),
+  });
 }
 
 function publicBaseUrl(request) {

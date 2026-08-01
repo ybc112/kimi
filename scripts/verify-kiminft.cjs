@@ -67,7 +67,8 @@ function request(method, query, body) {
       fs.writeFileSync(tempBody, new URLSearchParams(body).toString());
       args.push("--data-binary", `@${tempBody}`);
     }
-    try { return Promise.resolve(JSON.parse(execFileSync("curl.exe", args, { encoding: "utf8", timeout: 125000 }))); }
+    const curlCommand = process.platform === "win32" ? "curl.exe" : "curl";
+    try { return Promise.resolve(JSON.parse(execFileSync(curlCommand, args, { encoding: "utf8", timeout: 125000 }))); }
     catch (error) { return Promise.reject(new Error(`Etherscan V2 curl failed: ${error instanceof Error ? error.message : String(error)}`)); }
     finally { if (tempBody && fs.existsSync(tempBody)) fs.unlinkSync(tempBody); }
   }
