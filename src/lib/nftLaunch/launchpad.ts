@@ -71,14 +71,19 @@ export async function prepareNFTMetadata(draft: NFTLaunchDraft) {
   if (!result.baseURI || !result.metadataURI) throw new Error("NFT 元数据服务返回不完整");
   return { ...draft, baseURI: result.baseURI, metadataURI: result.metadataURI };
 }
-export async function createNFTLaunch(signer: Signer, draft: NFTLaunchDraft) {
+export type NFTLaunchStage = "vanity" | "wallet" | "confirming";
+
+export async function createNFTLaunch(signer: Signer, draft: NFTLaunchDraft, onStage?: (stage: NFTLaunchStage) => void) {
   if (!isNFTLaunchpadConfigured) throw new Error("NFT Factory 尚未配置，请部署 Factory 后设置 VITE_NFT_FACTORY_ADDRESS");
   if (!draft.name.trim() || !draft.symbol.trim() || !draft.baseURI.trim()) throw new Error("请填写名称、Symbol，并生成 NFT 元数据");
   const maxSupply = BigInt(draft.maxSupply); const maxWallet = BigInt(draft.maxMintPerWallet);
   if (maxSupply <= 0n || maxSupply > 1000000n || maxWallet <= 0n || maxWallet > maxSupply) throw new Error("供应量或钱包上限无效");
   const factory = new Contract(NFT_FACTORY_ADDRESS, nftFactoryAbi, signer);
+  onStage?.("vanity");
   const salt = await resolveNFTVanitySalt(draft, await signer.getAddress());
+  onStage?.("wallet");
   const tx = await factory.createNFTLaunch(draft.name.trim(), draft.symbol.trim().toUpperCase(), draft.description.trim(), draft.imageURI.trim(), draft.baseURI.trim(), draft.metadataURI.trim(), maxSupply, parseEther(draft.mintPrice || "0"), maxWallet, salt, { value: NFT_CREATION_FEE });
+  onStage?.("confirming");
   const receipt = await tx.wait();
   const parsed = new Interface(nftFactoryAbi);
   let collection = "";
