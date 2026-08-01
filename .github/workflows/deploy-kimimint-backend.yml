@@ -21,6 +21,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Check server deployment secrets
+        env:
+          HOST: ${{ secrets.KIMI_BACKEND_HOST }}
+          USER: ${{ secrets.KIMI_BACKEND_USER }}
+          PATH_ON_SERVER: ${{ secrets.KIMI_BACKEND_PATH }}
+          SSH_KEY: ${{ secrets.KIMI_BACKEND_SSH_KEY }}
+          HEALTH_URL: ${{ secrets.KIMI_BACKEND_HEALTH_URL }}
+        run: |
+          missing=""
+          [ -n "$HOST" ] || missing="$missing KIMI_BACKEND_HOST"
+          [ -n "$USER" ] || missing="$missing KIMI_BACKEND_USER"
+          [ -n "$PATH_ON_SERVER" ] || missing="$missing KIMI_BACKEND_PATH"
+          [ -n "$SSH_KEY" ] || missing="$missing KIMI_BACKEND_SSH_KEY"
+          [ -n "$HEALTH_URL" ] || missing="$missing KIMI_BACKEND_HEALTH_URL"
+          if [ -n "$missing" ]; then
+            echo "Missing required GitHub Secrets:$missing"
+            echo "Add the server SSH and health URL secrets before running this workflow."
+            exit 1
+          fi
+
       - name: Configure SSH
         uses: webfactory/ssh-agent@v0.9.0
         with:
