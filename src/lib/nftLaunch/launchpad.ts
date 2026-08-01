@@ -1,5 +1,5 @@
-import { Contract, Interface, getAddress, isAddress, parseEther, type Signer } from "ethers";
-import type { NFTLaunchDraft } from "./types";
+import { Contract, Interface, JsonRpcProvider, formatEther, getAddress, isAddress, parseEther, type Signer } from "ethers";
+import type { NFTLaunchDraft, NFTProject } from "./types";
 
 export const DEFAULT_NFT_FACTORY_ADDRESS = "0xd9c7E7Da8F6151FA111d25F33db32BF5c1e5D891";
 export const NFT_FACTORY_ADDRESS = String(import.meta.env.VITE_NFT_FACTORY_ADDRESS || DEFAULT_NFT_FACTORY_ADDRESS).trim();
@@ -10,10 +10,11 @@ export const nftFactoryAbi = [
   "function projects(address) view returns (address creator,address collection,string description,string imageURI,string metadataURI,uint64 createdAt)",
   "event NFTLaunchCreated(address indexed creator,address indexed collection,string name,string symbol,uint256 maxSupply,uint256 mintPrice,string metadataURI)",
 ] as const;
-export const nftCollectionAbi = ["function mint(uint256 quantity) payable", "function name() view returns (string)", "function symbol() view returns (string)", "function totalMinted() view returns (uint256)", "function maxSupply() view returns (uint256)"] as const;
+export const nftCollectionAbi = ["function mint(uint256 quantity) payable", "function name() view returns (string)", "function symbol() view returns (string)", "function description() view returns (string)", "function imageURI() view returns (string)", "function baseTokenURI() view returns (string)", "function totalMinted() view returns (uint256)", "function maxSupply() view returns (uint256)", "function mintPrice() view returns (uint256)", "function maxMintPerWallet() view returns (uint256)", "function owner() view returns (address)"] as const;
 export const isNFTLaunchpadConfigured = isAddress(NFT_FACTORY_ADDRESS);
 const backendUrl = String(import.meta.env.VITE_NFT_BACKEND_URL || import.meta.env.VITE_MINT_BACKEND_URL || "https://api.kimi-vault.com").trim().replace(/\/+$/, "");
 const nftVanitySuffix = String(import.meta.env.VITE_NFT_VANITY_SUFFIX || "7777").replace(/^0x/i, "").toLowerCase();
+export const nftProvider = new JsonRpcProvider(String(import.meta.env.VITE_NFT_RPC_URL || "https://bsc.publicnode.com"), 56);
 
 export async function uploadNFTAsset(dataUrl: string): Promise<string> {
   if (!/^data:image\/(?:png|jpeg|jpg|webp|gif|svg\+xml);base64,/i.test(dataUrl)) throw new Error("NFT 图片格式无效");
@@ -30,6 +31,32 @@ export async function queueNFTVerification(collection: string) {
   const response = await fetch(`${backendUrl}/api/nft/verify-project`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ collection }) });
   if (!response.ok) return { ok: false, skipped: true };
   return response.json() as Promise<{ ok: boolean; collection?: string }>;
+}
+
+export async function getNFTVerificationStatus(collection: string) {
+  if (!isAddress(collection)) return null;
+  const response = await fetch(`${backendUrl}/api/nft/verify-status?collection=${encodeURIComponent(collection)}`);
+  if (!response.ok) return null;
+  const result = await response.json() as { job?: { status?: string; attempts?: number; logs?: string[] } | null };
+  return result.job || null;
+}
+
+export async function loadNFTProject(collection: string): Promise<NFTProject> {
+  if (!isAddress(collection)) throw new Error("NFT 合集地址无效");
+  const address = getAddress(collection);
+  const factory = new Contract(NFT_FACTORY_ADDRESS, nftFactoryAbi, nftProvider);
+  const nft = new Contract(address, nftCollectionAbi, nftProvider);
+  const [project, name, symbol, description, imageURI, baseURI, maxSupply, mintPrice, maxMintPerWallet, totalMinted, creator] = await Promise.all([
+    factory.projects(address), nft.name(), nft.symbol(), nft.description(), nft.imageURI(), nft.baseTokenURI(),
+    nft.maxSupply(), nft.mintPrice(), nft.maxMintPerWallet(), nft.totalMinted(), nft.owner(),
+  ]);
+  if (String(project.collection || project[1]).toLowerCase() !== address.toLowerCase()) throw new Error("该合集不属于当前 NFT Factory");
+  return {
+    collection: address, creator: getAddress(String(creator)), name: String(name), symbol: String(symbol),
+    description: String(description), imageURI: String(imageURI), baseURI: String(baseURI), metadataURI: String(project.metadataURI || project[4]),
+    maxSupply: String(maxSupply), mintPrice: formatEther(mintPrice), maxMintPerWallet: String(maxMintPerWallet),
+    totalMinted: String(totalMinted), createdAt: Number(project.createdAt || project[5]),
+  };
 }
 
 export async function prepareNFTMetadata(draft: NFTLaunchDraft) {

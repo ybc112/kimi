@@ -23,6 +23,7 @@ const routes = [
   "mint-launches",
   "nft-launch",
   "nft-launches",
+  "nft",
 ];
 
 await Promise.all(

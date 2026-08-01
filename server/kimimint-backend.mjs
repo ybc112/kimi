@@ -73,6 +73,7 @@ const nftMetadataDir = path.resolve(process.env.KIMINFT_METADATA_DIR || path.joi
 const jobs = new Map();
 const rateBuckets = new Map();
 let lastTokenCount = 0;
+let lastNFTCollectionCount = 0;
 let verifying = false;
 
 const server = createServer(async (request, response) => {
@@ -129,6 +130,12 @@ const server = createServer(async (request, response) => {
       return;
     }
 
+    if (request.method === "GET" && url.pathname === "/api/nft/verify-status") {
+      const collection = normalizeAddress(url.searchParams.get("collection") || "");
+      sendJson(response, 200, { collection, job: jobs.get(`nft:${collection}`.toLowerCase()) || null });
+      return;
+    }
+
     if (request.method === "GET" && url.pathname.startsWith("/api/nft/metadata/")) {
       await sendNFTMetadata(response, url.pathname);
       return;
@@ -178,7 +185,11 @@ server.listen(port, () => {
   console.log(`RPC: ${rpcUrl}`);
   if (autoVerify) {
     void syncProjects(true);
-    setInterval(() => void syncProjects(false), pollMs);
+    void syncNFTProjects(true);
+    setInterval(() => {
+      void syncProjects(false);
+      void syncNFTProjects(false);
+    }, pollMs);
   }
 });
 
@@ -295,6 +306,21 @@ function runVerify(token) {
       reject(new Error(logs.join("") || `verify exited with code ${code}`));
     });
   });
+}
+
+async function syncNFTProjects(backfill) {
+  if (!nftFactory) return;
+  try {
+    const count = Number(await nftFactory.allCollectionsLength());
+    const start = backfill ? Math.max(0, count - backfillCount) : lastNFTCollectionCount;
+    for (let index = start; index < count; index += 1) {
+      const collection = getAddress(await nftFactory.allCollections(index));
+      queueVerify(`nft:${collection}`, backfill ? "backfill" : "monitor");
+    }
+    lastNFTCollectionCount = count;
+  } catch (error) {
+    console.error("NFT project sync failed:", error instanceof Error ? error.message : error);
+  }
 }
 
 async function assertNFTFactoryProject(collection) {
