@@ -6,6 +6,8 @@ on:
     paths:
       - "server/**"
       - "contracts/nft/**"
+      - "contracts/mint/**"
+      - "scripts/verify-kimimint-project.cjs"
       - "scripts/verify-kiminft.cjs"
       - "scripts/prepare-full-verify.mjs"
       - "package.json"
@@ -57,7 +59,7 @@ jobs:
           USER: ${{ secrets.KIMI_BACKEND_USER }}
           PATH_ON_SERVER: ${{ secrets.KIMI_BACKEND_PATH }}
         run: |
-          tar --exclude=node_modules --exclude=dist --exclude=.git --exclude=work -czf /tmp/kimi-backend.tgz server contracts/nft scripts package.json package-lock.json deployments hardhat.config.cjs
+          tar --exclude=node_modules --exclude=dist --exclude=.git --exclude=work -czf /tmp/kimi-backend.tgz server contracts/mint contracts/nft scripts package.json package-lock.json deployments hardhat.config.cjs
           scp /tmp/kimi-backend.tgz "$USER@$HOST:/tmp/kimi-backend.tgz"
           ssh "$USER@$HOST" "mkdir -p '$PATH_ON_SERVER' && tar -xzf /tmp/kimi-backend.tgz -C '$PATH_ON_SERVER' && rm -f /tmp/kimi-backend.tgz"
 
@@ -69,7 +71,7 @@ jobs:
         run: |
           ssh "$USER@$HOST" "cd '$PATH_ON_SERVER' && npm ci && npm run contracts:compile"
           ssh "$USER@$HOST" "cd '$PATH_ON_SERVER' && touch .env && sed -i '/^KIMIMINT_FACTORY_ADDRESS=/d;/^KIMINFT_FACTORY_ADDRESS=/d;/^AUTO_VERIFY_PROJECTS=/d;/^KIMIMINT_RPC_URL=/d;/^BSCSCAN_API_KEY=/d' .env && printf '%s\\n' 'KIMIMINT_FACTORY_ADDRESS=${{ secrets.KIMIMINT_FACTORY_ADDRESS }}' 'KIMINFT_FACTORY_ADDRESS=${{ secrets.KIMINFT_FACTORY_ADDRESS }}' 'AUTO_VERIFY_PROJECTS=true' 'KIMIMINT_RPC_URL=${{ secrets.KIMIMINT_RPC_URL }}' 'BSCSCAN_API_KEY=${{ secrets.BSCSCAN_API_KEY }}' >> .env"
-          ssh "$USER@$HOST" "if command -v pm2 >/dev/null 2>&1; then pm2 restart kimi-backend --update-env || pm2 start server/kimimint-backend.mjs --name kimi-backend; pm2 save; else pkill -f 'server/kimimint-backend.mjs' || true; nohup node server/kimimint-backend.mjs > kimi-backend.log 2>&1 </dev/null & fi"
+          ssh "$USER@$HOST" "cd '$PATH_ON_SERVER' && if command -v pm2 >/dev/null 2>&1; then pm2 restart kimimint-backend --update-env || pm2 start server/kimimint-backend.mjs --name kimimint-backend; pm2 save; else pkill -f 'server/kimimint-backend.mjs' || true; nohup node server/kimimint-backend.mjs > kimimint-backend.log 2>&1 </dev/null & fi"
 
       - name: Verify health endpoint
         env:
