@@ -380,7 +380,8 @@ async function verifyWithEtherscanV2({ address, constructorArgs, contract, label
 }
 
 function buildVerificationInput({ artifact, buildInfo, sourceName }) {
-  const metadata = JSON.parse(artifact.metadata || "{}");
+  const compiledContract = buildInfo.output?.contracts?.[sourceName]?.[artifact.contractName];
+  const metadata = JSON.parse(artifact.metadata || compiledContract?.metadata || "{}");
   const sourceNames = Object.keys(metadata.sources || {});
   if (!sourceNames.includes(sourceName)) {
     throw new Error(`Artifact metadata does not include ${sourceName}.`);
