@@ -133,6 +133,18 @@ function requestJson({ method, url, query = {}, body = null }) {
 
 // ---- Full standard-json-input (pre-generated with all dependencies) ----
 function loadSourceCode() {
+  // Rebuild the input from the current contract sources so the backend never
+  // submits a stale or partial verification bundle after a deployment update.
+  const prepareScript = path.join(rootDir, "scripts", "prepare-full-verify.mjs");
+  if (fs.existsSync(prepareScript)) {
+    const result = require("node:child_process").spawnSync(process.execPath, [prepareScript], {
+      cwd: rootDir,
+      encoding: "utf8",
+    });
+    if (result.status !== 0) {
+      throw new Error(result.stderr || result.stdout || "Failed to prepare verification sources.");
+    }
+  }
   const candidates = [
     path.join(rootDir, "work", "full-standard-json-input.json"),
     path.join(rootDir, "standard-json-input.json"),
@@ -298,8 +310,9 @@ async function verifyWithEtherscanV2({ address, constructorArgs, contract, label
   const optimizationUsed = optimizerSettings.enabled ? "1" : "0";
   const optimizerRuns = String(optimizerSettings.runs ?? "200");
 
-  // Use the PRE-GENERATED full standard-json-input (with all deps at correct import paths)
-  const sourceCode = loadSourceCode();
+  // Submit the exact compiler input linked by this artifact. Adding unrelated
+  // sources changes Solidity metadata and makes the creation bytecode differ.
+  const sourceCode = JSON.stringify(buildInfo.input);
 
   const apiUrl = process.env.ETHERSCAN_V2_API_URL || "https://api.etherscan.com/v2/api";
   const apiKey = process.env.ETHERSCAN_API_KEY || process.env.BSCSCAN_API_KEY || "";

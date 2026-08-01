@@ -96,7 +96,6 @@ function main() {
       outputSelection: {
         "*": { "*": ["abi", "evm.bytecode.object", "evm.deployedBytecode.object"] },
       },
-      metadata: { useLiteralContent: true },
     },
   };
 
