@@ -1,4 +1,5 @@
 // Submit Token with Token-only standard-json-input
+require("dotenv").config();
 const https = require("https");
 const fs = require("fs");
 const { HttpsProxyAgent } = require("https-proxy-agent");
@@ -7,9 +8,12 @@ const agent = new HttpsProxyAgent(process.env.HTTPS_PROXY || "http://127.0.0.1:7
 const sourceCode = fs.readFileSync("work/token-only-input.json", "utf8");
 const tokenArgs = fs.readFileSync("/tmp/token_args_v2.txt", "utf8").trim();
 
+const apiKey = process.env.BSCSCAN_API_KEY;
+if (!apiKey) throw new Error("BSCSCAN_API_KEY is required");
+
 const body = new URLSearchParams({
   module: "contract", action: "verifysourcecode",
-  apikey: "Y9SWA2SK9A2MUEBHGVR5Q4TSHQ3U4R5YES",
+  apikey: apiKey,
   contractaddress: "0x0166eEc08FeB66Fbad1B9df279A90D5C4CDc7777",
   sourceCode,
   codeformat: "solidity-standard-json-input",

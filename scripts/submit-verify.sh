@@ -16,7 +16,11 @@ if [ ! -f "$SOURCE_FILE" ]; then
   exit 1
 fi
 
-API_KEY="${BSCSCAN_API_KEY:-Y9SWA2SK9A2MUEBHGVR5Q4TSHQ3U4R5YES}"
+API_KEY="${BSCSCAN_API_KEY:-}"
+if [ -z "$API_KEY" ]; then
+  echo "ERROR: BSCSCAN_API_KEY is required."
+  exit 1
+fi
 PROXY="${HTTPS_PROXY:-http://127.0.0.1:7898}"
 
 # Build the form data manually with the source file

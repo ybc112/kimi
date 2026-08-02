@@ -31,7 +31,7 @@ async function main() {
   const privateKey = (process.env.PRIVATE_KEY || "").startsWith("0x")
     ? process.env.PRIVATE_KEY
     : `0x${process.env.PRIVATE_KEY}`;
-  const rpcUrl = process.env.BSC_RPC_URL || "https://aged-bitter-borough.bsc.quiknode.pro/54b8018087f29ffeb7ac53126a9e3053d1e06bc0/";
+  const rpcUrl = process.env.BSC_RPC_URL || process.env.KIMIMINT_RPC_URL || "https://bsc-rpc.publicnode.com";
   const provider = new ethers.JsonRpcProvider(rpcUrl, 56);
   const signer = new ethers.Wallet(privateKey, provider);
 

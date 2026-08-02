@@ -30,11 +30,13 @@ const DEFAULT_APP_BACKEND_URL = "same-origin";
 const configuredBackendUrl =
   String(import.meta.env.VITE_MINT_BACKEND_URL ?? "").trim() || DEFAULT_APP_BACKEND_URL;
 
-export const DEFAULT_MINT_FACTORY_ADDRESS = "0x66a6EdF9383c64C87a91FC8C98189CCA5A764DBf";
+export const DEFAULT_MINT_FACTORY_ADDRESS = "0xE1CD783bcE52E8945B0FB539AA106aa35b08879e";
 const RETIRED_MINT_FACTORY_ADDRESSES = new Set([
   "0x084c85f7cf1d9cf3d638ef75b1561e464884dfbc",
+  "0x66a6edf9383c64c87a91fc8c98189cca5a764dbf",
 ]);
 export const DEFAULT_MINT_FEE_RECIPIENT = "0xc5c848Dc65d004Adc1c9DC54BBb3b3bB7084C1E9";
+export const MINT_PLATFORM_TAX_SHARE_BPS = 1_000;
 const DEFAULT_CREATION_FEE_BNB = "0.005";
 
 function resolveMintFactoryAddress(value: string): string {
@@ -114,6 +116,7 @@ const tokenAbi = [
   "function allowance(address owner,address spender) view returns (uint256)",
   "function balanceOf(address account) view returns (uint256)",
   "function unpaidDividend(address account) view returns (uint256)",
+  "function platformTaxShareBps() view returns (uint256)",
 ] as const;
 
 const mintVaultAbi = [
@@ -447,7 +450,6 @@ export async function fetchMintLaunchProjects(account = ""): Promise<MintLaunchP
     const paymentToken = String(project.paymentToken ?? project[3]);
     const receiver = String(project.receiver ?? project[4]);
     const platformFeeReceiver = String(project.platformFeeReceiver ?? project[5] ?? ZeroAddress);
-    const platformFeeBps = 0;
     const totalSupply = BigInt(project.totalSupply ?? project[6] ?? 0);
     const mintCount = BigInt(project.mintCount ?? project[7] ?? 0);
     const whitelistMintCount = BigInt(project.whitelistMintCount ?? project[8] ?? 0);
@@ -494,6 +496,7 @@ export async function fetchMintLaunchProjects(account = ""): Promise<MintLaunchP
       mintPaymentAllowance,
       vaultTokenBalance,
       userDividendUnpaid,
+      platformFeeBps,
     ] = await Promise.all([
       token.name().catch(() => "Unknown"),
       token.symbol().catch(() => "TOKEN"),
@@ -515,6 +518,7 @@ export async function fetchMintLaunchProjects(account = ""): Promise<MintLaunchP
         : 0n,
       token.balanceOf(vaultAddress).catch(() => 0n),
       account && isAddress(account) ? token.unpaidDividend(account).catch(() => 0n) : 0n,
+      token.platformTaxShareBps().catch(() => BigInt(MINT_PLATFORM_TAX_SHARE_BPS)),
     ]);
 
     const mintedCountValue = BigInt(mintedCount);
@@ -536,7 +540,7 @@ export async function fetchMintLaunchProjects(account = ""): Promise<MintLaunchP
       paymentToken,
       receiver,
       platformFeeReceiver,
-      platformFeeBps,
+      platformFeeBps: Number(platformFeeBps),
       name: String(name),
       symbol: String(symbol),
       description: metadata.description || "链上发射项目",

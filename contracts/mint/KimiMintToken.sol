@@ -308,7 +308,8 @@ contract KimiMintToken is ERC20, Ownable {
 
     uint16 public constant BPS_DENOMINATOR = 10_000;
     uint16 public constant MAX_TAX_BPS = 2_500;
-    uint16 public constant PLATFORM_TAX_SHARE_BPS = 0;
+    // The platform receives 10% of collected tax, not 10% of the trade amount.
+    uint16 public constant PLATFORM_TAX_SHARE_BPS = 1_000;
     address public constant LP_BLACK_HOLE = 0x000000000000000000000000000000000000dEaD;
 
     string public projectUri;
@@ -360,7 +361,9 @@ contract KimiMintToken is ERC20, Ownable {
     mapping(address pair => bool enabled) public automatedMarketMakerPairs;
 
     error InvalidTax();
+    error NativeTransferFailed();
     error NotLaunchVault();
+    error NotSelf();
     error InvalidMintPayment();
     error PairAlreadySet();
     error InvalidAirdropNumbs();
@@ -447,6 +450,13 @@ contract KimiMintToken is ERC20, Ownable {
         _swapping = true;
         _;
         _swapping = false;
+    }
+
+    modifier onlySelf() {
+        if (msg.sender != address(this)) {
+            revert NotSelf();
+        }
+        _;
     }
 
     constructor(
@@ -674,6 +684,10 @@ contract KimiMintToken is ERC20, Ownable {
         return PLATFORM_TAX_SHARE_BPS;
     }
 
+    function platformTaxShareBps() external pure returns (uint256) {
+        return PLATFORM_TAX_SHARE_BPS;
+    }
+
     function isAddV2() external view returns (bool) {
         return _isAddLiquidity(liquidityPair);
     }
@@ -683,6 +697,9 @@ contract KimiMintToken is ERC20, Ownable {
     }
 
     function processTaxTokens() external {
+        if (_swapping) {
+            return;
+        }
         _swapBackIfNeeded();
     }
 
@@ -887,7 +904,8 @@ contract KimiMintToken is ERC20, Ownable {
 
     function _swapBackIfNeeded() private {
         if (
-            !swapEnabled || address(liquidityRouter) == address(0) || liquidityPair == address(0)
+            _swapping || !swapEnabled || address(liquidityRouter) == address(0)
+                || liquidityPair == address(0)
         ) {
             return;
         }
@@ -914,11 +932,6 @@ contract KimiMintToken is ERC20, Ownable {
         uint256 liquidityTokens = (tokensForLiquidity * totalTokensToProcess) / bucketTotal;
         uint256 dividendTokens = totalTokensToProcess - platformTokens - marketingTokens
             - liquidityTokens;
-
-        tokensForPlatform -= platformTokens;
-        tokensForMarketing -= marketingTokens;
-        tokensForLiquidity -= liquidityTokens;
-        tokensForDividends -= dividendTokens;
 
         _swapBack(platformTokens, marketingTokens, liquidityTokens, dividendTokens);
     }
@@ -1081,6 +1094,7 @@ contract KimiMintToken is ERC20, Ownable {
         uint256 nativeSwapTokens
     )
         external
+        onlySelf
         returns (uint256 nativeReceived)
     {
         uint256 nativeBefore = address(this).balance;
@@ -1108,9 +1122,15 @@ contract KimiMintToken is ERC20, Ownable {
         uint256 dividendTokens
     )
         external
+        onlySelf
         returns (uint256 rewardReceived)
     {
         rewardReceived = _swapTokensForReward(dividendTokens);
+        if (rewardReceived > 0) {
+            IERC20(rewardToken).safeTransfer(address(dividendDistributor), rewardReceived);
+            dividendDistributor.deposit(rewardReceived);
+            totalDividendsDeposited += rewardReceived;
+        }
     }
 
     function _swapBack(
@@ -1139,6 +1159,9 @@ contract KimiMintToken is ERC20, Ownable {
                 returns (uint256 nr)
             {
                 nativeReceived = nr;
+                tokensForPlatform -= platformTokens;
+                tokensForMarketing -= marketingTokens;
+                tokensForLiquidity -= liquidityTokens;
             }
             catch {}
         }
@@ -1149,14 +1172,7 @@ contract KimiMintToken is ERC20, Ownable {
                 returns (uint256 rr)
             {
                 rewardReceived = rr;
-                if (rewardReceived > 0) {
-                    IERC20(rewardToken).safeTransfer(
-                        address(dividendDistributor),
-                        rewardReceived
-                    );
-                    dividendDistributor.deposit(rewardReceived);
-                    totalDividendsDeposited += rewardReceived;
-                }
+                tokensForDividends -= dividendTokens;
             }
             catch {}
         }
@@ -1224,7 +1240,7 @@ contract KimiMintToken is ERC20, Ownable {
     function _sendNative(address to, uint256 amount) private {
         (bool sent,) = payable(to).call{ value: amount }("");
         if (!sent) {
-            return;
+            revert NativeTransferFailed();
         }
     }
 

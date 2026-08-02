@@ -35,6 +35,7 @@ import {
   createMintLaunchToken,
   getMintReadProvider,
   isMintLaunchpadConfigured,
+  MINT_PLATFORM_TAX_SHARE_BPS,
   mintLaunchpadConfig,
   queueMintProjectVerification,
   readMintLaunchCreatedToken,
@@ -751,6 +752,13 @@ export default function MintLaunch() {
                 </p>
               </div>
             </div>
+
+            <div className="mt-4 rounded-xl border border-[#D0FF00]/25 bg-[#D0FF00]/5 p-4 text-xs leading-5 text-[#C8D0D8]">
+              <strong className="text-[#D0FF00]">平台税收份额：{MINT_PLATFORM_TAX_SHARE_BPS / 100}%</strong>
+              <span className="ml-1">
+                从已收取的买卖税中提取，并先滞留在代币合约；累计达到兑换阈值后转为 BNB，发送至平台收款地址。该比例不是对交易额额外征收 {MINT_PLATFORM_TAX_SHARE_BPS / 100}%。
+              </span>
+            </div>
           </section>
 
           {/* 05 Receiver */}
@@ -902,6 +910,7 @@ export default function MintLaunch() {
                 },
                 { label: "白名单", value: whitelistEnabled ? "开启" : "关闭", highlight: whitelistEnabled },
                 { label: "税率", value: `${buyTax}% / ${sellTax}%` },
+                { label: "平台税收份额", value: `${MINT_PLATFORM_TAX_SHARE_BPS / 100}%（从交易税中提取）` },
               ].map((item) => (
                 <div key={item.label} className="flex justify-between border-b border-[#25282C]/50 pb-2 text-[#9CA3AF] last:border-0 last:pb-0">
                   <span>{item.label}</span>
