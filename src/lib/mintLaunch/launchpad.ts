@@ -232,7 +232,7 @@ const messages = {
     "当前无法预估 Mint Gas。请确认当前钱包是否在白名单列表、公开阶段是否已开放、钱包余额是否足够，并刷新页面后重试。",
   insufficientNativeBalance: (required: string, balance: string) =>
     `钱包 BNB 不足：预计至少需要 ${required} BNB，当前余额 ${balance} BNB。`,
-  vanityUnavailable: "本次没有匹配到 EEEE 靓号地址，请重新点击部署再试一次。",
+  vanityUnavailable: "本次没有匹配到 7777 靓号地址，请重新点击部署再试一次。",
 };
 
 export async function createMintLaunchToken(
