@@ -1,9 +1,9 @@
 {
   "network": "bsc",
   "chainId": 56,
-  "factory": "0xE1CD783bcE52E8945B0FB539AA106aa35b08879e",
-  "tokenDeployer": "0xD04e2657846404E530fCb8cB3A5ECa451557464b",
-  "vaultDeployer": "0x8B0cceab08C5907f91539cF551ECFc008dEc5BF5",
+  "factory": "0xf4eCf0bd65461DBdB1C9653c8712589Da5C46D11",
+  "tokenDeployer": "0x3dc1f83388Fd20de66A536418912BbF7ABa6af67",
+  "vaultDeployer": "0xFACaF68571446233fB7374B912A8A93b9B469f7b",
   "feeRecipient": "0xc5c848Dc65d004Adc1c9DC54BBb3b3bB7084C1E9",
   "creationFee": "5000000000000000",
   "creationFeeToken": "0x0000000000000000000000000000000000000000",
@@ -11,5 +11,5 @@
   "liquidityRouter": "0x10ED43C718714eb63d5aA57B78B54704E256024E",
   "requiredTokenSuffix": 30583,
   "platformTaxShareBps": 1000,
-  "deployedAt": "2026-08-02T07:52:20.943Z"
+  "deployedAt": "2026-08-05T13:00:00.000Z"
 }

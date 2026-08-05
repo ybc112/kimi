@@ -30,10 +30,11 @@ const DEFAULT_APP_BACKEND_URL = "same-origin";
 const configuredBackendUrl =
   String(import.meta.env.VITE_MINT_BACKEND_URL ?? "").trim() || DEFAULT_APP_BACKEND_URL;
 
-export const DEFAULT_MINT_FACTORY_ADDRESS = "0xE1CD783bcE52E8945B0FB539AA106aa35b08879e";
+export const DEFAULT_MINT_FACTORY_ADDRESS = "0xf4eCf0bd65461DBdB1C9653c8712589Da5C46D11";
 const RETIRED_MINT_FACTORY_ADDRESSES = new Set([
   "0x084c85f7cf1d9cf3d638ef75b1561e464884dfbc",
   "0x66a6edf9383c64c87a91fc8c98189cca5a764dbf",
+  "0xe1cd783bce52e8945b0fb539aa106aa35b08879e",
 ]);
 export const DEFAULT_MINT_FEE_RECIPIENT = "0xc5c848Dc65d004Adc1c9DC54BBb3b3bB7084C1E9";
 export const MINT_PLATFORM_TAX_SHARE_BPS = 1_000;
@@ -451,7 +452,6 @@ export async function fetchMintLaunchProjects(account = ""): Promise<MintLaunchP
     const paymentToken = String(project.paymentToken ?? project[3]);
     const receiver = String(project.receiver ?? project[4]);
     const platformFeeReceiver = String(project.platformFeeReceiver ?? project[5] ?? ZeroAddress);
-    const platformFeeBps = 0;
     const totalSupply = BigInt(project.totalSupply ?? project[7] ?? 0);
     const mintCount = BigInt(project.mintCount ?? project[8] ?? 0);
     const whitelistMintCount = BigInt(project.whitelistMintCount ?? project[9] ?? 0);
