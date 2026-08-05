@@ -561,11 +561,12 @@ export default function MintLaunch() {
                 />
               </div>
               <div>
-                <label className={labelClass}>单钱包最多 Mint（0 = 不限制）</label>
+                <label className={labelClass}>单钱包最多 Mint（0 = 不限制，默认 1）</label>
                 <input
                   className="kimi-input"
                   value={form.maxMintPerWallet}
                   onChange={(e) => updateForm("maxMintPerWallet", e.target.value.replace(/\D/g, ""))}
+                  placeholder="1"
                 />
               </div>
               <div>

@@ -213,6 +213,7 @@ const messages = {
   requiredMint: "请先填写发行量、公开份数、白名单份数和单次 mint 价格。",
   invalidSupply: "发行量必须大于 0。",
   invalidMintCount: "mint 次数必须是大于 0 的整数。",
+  invalidMaxMintPerWallet: "单钱包上限必须是大于等于 0 的整数（0 表示不限制）。",
   invalidMintQuota: "公开份数和白名单份数加起来必须大于 0。",
   whitelistNeedsQuota: "开启白名单时，白名单份数必须大于 0。",
   invalidMintPrice: "单次 mint 价格必须大于 0。",
@@ -450,29 +451,30 @@ export async function fetchMintLaunchProjects(account = ""): Promise<MintLaunchP
     const paymentToken = String(project.paymentToken ?? project[3]);
     const receiver = String(project.receiver ?? project[4]);
     const platformFeeReceiver = String(project.platformFeeReceiver ?? project[5] ?? ZeroAddress);
-    const totalSupply = BigInt(project.totalSupply ?? project[6] ?? 0);
-    const mintCount = BigInt(project.mintCount ?? project[7] ?? 0);
-    const whitelistMintCount = BigInt(project.whitelistMintCount ?? project[8] ?? 0);
-    const publicMintCount = BigInt(project.publicMintCount ?? project[9] ?? 0);
-    const mintPrice = BigInt(project.mintPrice ?? project[10] ?? 0);
-    const maxMintPerWallet = BigInt(project.maxMintPerWallet ?? project[11] ?? 0);
-    const whitelistEnabled = Boolean(project.whitelistEnabled ?? project[12]);
-    const metadataUri = String(project.metadataUri ?? project[13] ?? "");
-    const createdAt = Number(project.createdAt ?? project[14] ?? 0);
-    const rewardToken = String(project.rewardToken ?? project[15] ?? ZeroAddress);
-    const rewardThreshold = BigInt(project.rewardThreshold ?? project[16] ?? 0);
-    const buyTaxBps = Number(project.buyTaxBps ?? project[17] ?? 0);
-    const sellTaxBps = Number(project.sellTaxBps ?? project[18] ?? 0);
-    const transferTaxBps = Number(project.transferTaxBps ?? project[19] ?? 0);
-    const addLiquidityTaxBps = Number(project.addLiquidityTaxBps ?? project[20] ?? 0);
-    const removeLiquidityTaxBps = Number(project.removeLiquidityTaxBps ?? project[21] ?? 0);
-    const launchProtectionTaxBps = Number(project.launchProtectionTaxBps ?? project[22] ?? 0);
-    const launchProtectionBlocks = Number(project.launchProtectionBlocks ?? project[23] ?? 0);
-    const claimWait = Number(project.claimWait ?? project[24] ?? 60);
-    const fundFeeBps = Number(project.fundFeeBps ?? project[25] ?? 0);
-    const lpFeeBps = Number(project.lpFeeBps ?? project[26] ?? 0);
-    const dividendFeeBps = Number(project.dividendFeeBps ?? project[27] ?? 0);
-    const burnFeeBps = Number(project.burnFeeBps ?? project[28] ?? 0);
+    const platformFeeBps = 0;
+    const totalSupply = BigInt(project.totalSupply ?? project[7] ?? 0);
+    const mintCount = BigInt(project.mintCount ?? project[8] ?? 0);
+    const whitelistMintCount = BigInt(project.whitelistMintCount ?? project[9] ?? 0);
+    const publicMintCount = BigInt(project.publicMintCount ?? project[10] ?? 0);
+    const mintPrice = BigInt(project.mintPrice ?? project[11] ?? 0);
+    const maxMintPerWallet = BigInt(project.maxMintPerWallet ?? project[12] ?? 0);
+    const whitelistEnabled = Boolean(project.whitelistEnabled ?? project[13]);
+    const metadataUri = String(project.metadataUri ?? project[14] ?? "");
+    const createdAt = Number(project.createdAt ?? project[15] ?? 0);
+    const rewardToken = String(project.rewardToken ?? project[16] ?? ZeroAddress);
+    const rewardThreshold = BigInt(project.rewardThreshold ?? project[17] ?? 0);
+    const buyTaxBps = Number(project.buyTaxBps ?? project[18] ?? 0);
+    const sellTaxBps = Number(project.sellTaxBps ?? project[19] ?? 0);
+    const transferTaxBps = Number(project.transferTaxBps ?? project[20] ?? 0);
+    const addLiquidityTaxBps = Number(project.addLiquidityTaxBps ?? project[21] ?? 0);
+    const removeLiquidityTaxBps = Number(project.removeLiquidityTaxBps ?? project[22] ?? 0);
+    const launchProtectionTaxBps = Number(project.launchProtectionTaxBps ?? project[23] ?? 0);
+    const launchProtectionBlocks = Number(project.launchProtectionBlocks ?? project[24] ?? 0);
+    const claimWait = Number(project.claimWait ?? project[25] ?? 60);
+    const fundFeeBps = Number(project.fundFeeBps ?? project[26] ?? 0);
+    const lpFeeBps = Number(project.lpFeeBps ?? project[27] ?? 0);
+    const dividendFeeBps = Number(project.dividendFeeBps ?? project[28] ?? 0);
+    const burnFeeBps = Number(project.burnFeeBps ?? project[29] ?? 0);
 
     const token = new Contract(tokenAddress, tokenAbi, provider);
     const vault = new Contract(vaultAddress, mintVaultAbi, provider);
@@ -776,7 +778,10 @@ function validateDraftForContract(draft: MintLaunchDraft) {
   if (!Number.isFinite(Number(form.mintPrice)) || Number(form.mintPrice) <= 0) {
     throw new Error(messages.invalidMintPrice);
   }
-  parseMintCountAllowZero(form.maxMintPerWallet || "0");
+  const maxMintPerWallet = parseMintCountAllowZero(form.maxMintPerWallet || "0");
+  if (maxMintPerWallet < 0n) {
+    throw new Error(messages.invalidMaxMintPerWallet);
+  }
 
   if (!isAddress(form.receiverWallet)) {
     throw new Error(messages.invalidReceiver);
@@ -834,7 +839,7 @@ function parseMintCount(value: string) {
 
 function parseMintCountAllowZero(value: string) {
   if (!/^\d+$/.test(value.trim())) {
-    throw new Error(messages.invalidMintCount);
+    throw new Error(messages.invalidMaxMintPerWallet);
   }
   return BigInt(value.trim());
 }

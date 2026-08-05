@@ -29,7 +29,7 @@ export const initialMintForm: MintFormState = {
   mintCount: "300",
   publicMintCount: "270",
   whitelistMintCount: "30",
-  maxMintPerWallet: "0",
+  maxMintPerWallet: "1",
   mintPrice: "0.01",
   paymentToken: MINT_ZERO_ADDRESS,
   rewardToken: "",
