@@ -1,6 +1,6 @@
 import { ethers } from "ethers";
 
-const factory = "0xf4eCf0bd65461DBdB1C9653c8712589Da5C46D11";
+const factory = "0xE1CD783bcE52E8945B0FB539AA106aa35b08879e";
 const eventSig = "LaunchCreated(address,address,address,bytes32,string,string,uint256,uint256,uint256,address,bool,string)";
 const topic0 = ethers.id(eventSig);
 
