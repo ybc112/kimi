@@ -12,8 +12,11 @@ import {
   TrendingUp,
   ExternalLink,
   ShieldCheck,
+  Copy,
+  Check,
 } from "lucide-react";
 import { useContractData } from "@/hooks/useContractData";
+import { KIMI_K3_TOKEN_ADDRESS } from "@/lib/trending";
 import { cn } from "@/lib/utils";
 import Empty from "@/components/Empty";
 
@@ -39,6 +42,20 @@ const tagColor: Record<string, string> = {
 };
 
 const shorten = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+
+function useCopyAddress() {
+  const [copied, setCopied] = useState<string | null>(null);
+  const copy = async (address: string) => {
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopied(address);
+      setTimeout(() => setCopied((current) => (current === address ? null : current)), 1500);
+    } catch {
+      // ignore
+    }
+  };
+  return { copied, copy };
+}
 
 function Sparkline({ data, change }: { data: number[]; change: string }) {
   const min = Math.min(...data);
@@ -76,6 +93,7 @@ export default function Trending() {
   const { trending, loading, trendingError, refreshTrending } = useContractData();
   const [activeTab, setActiveTab] = useState<TabKey>("gainers");
   const [search, setSearch] = useState("");
+  const { copied, copy } = useCopyAddress();
 
   const ordered = useMemo(() => {
     const next = [...trending];
@@ -239,7 +257,12 @@ export default function Trending() {
                   <div className="min-w-0 flex-1">
                     <div className="flex min-w-0 flex-wrap items-center gap-1.5 sm:flex-nowrap sm:gap-2">
                       <div className="flex min-w-0 basis-full items-center gap-1.5 sm:basis-auto">
-                        <span className="truncate text-sm font-medium text-[#E8E8E8]">{item.name}</span>
+                        <span className="truncate text-sm font-medium text-[#E8E8E8]">
+                          {item.name}
+                          {item.address.toLowerCase() === KIMI_K3_TOKEN_ADDRESS.toLowerCase() && (
+                            <span className="ml-1">🔥🔥🔥</span>
+                          )}
+                        </span>
                         {item.isOfficial && <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-[#D0FF00]" aria-label="官方 KIMI" />}
                       </div>
                       <span className="rounded bg-[#25282C] px-1.5 py-0.5 text-[10px] font-medium text-[#D0FF00]">
@@ -254,7 +277,26 @@ export default function Trending() {
                         {tag}
                       </span>
                     </div>
-                    <p className="mt-0.5 font-mono text-xs text-[#6B7280]">{shorten(item.address)}</p>
+                    <div className="mt-0.5 flex items-center gap-1.5">
+                      <p className="font-mono text-xs text-[#6B7280]">{shorten(item.address)}</p>
+                      <button
+                        onClick={() => copy(item.address)}
+                        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-[#9CA3AF] transition hover:bg-[#25282C] hover:text-white"
+                        title="复制合约地址"
+                      >
+                        {copied === item.address ? (
+                          <>
+                            <Check className="h-3 w-3 text-[#34D399]" />
+                            <span className="text-[#34D399]">已复制</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="h-3 w-3" />
+                            <span>复制</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
 
                   <div className="hidden shrink-0 sm:block">
