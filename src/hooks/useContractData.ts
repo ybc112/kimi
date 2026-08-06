@@ -2,8 +2,11 @@ import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import type { TodayStats, ActivityItem, TrendingItem } from "@/types";
 import { safeGetItem, safeSetItem } from "@/lib/storage";
 import {
+  createKimiK3Fallback,
   createOfficialKimiFallback,
+  fetchKimiK3Trending,
   fetchOfficialKimiTrending,
+  readCachedKimiK3,
   readCachedOfficialKimi,
 } from "@/lib/trending";
 
@@ -38,16 +41,28 @@ export function useContractData() {
     const controller = new AbortController();
     let active = true;
     setLoading(true);
-    void fetchOfficialKimiTrending(controller.signal)
-      .then((item) => {
+    void Promise.all([
+      fetchOfficialKimiTrending(controller.signal).catch((error: unknown) => {
+        if (controller.signal.aborted) return null;
+        throw new Error(error instanceof Error ? error.message : "官方 KIMI 行情暂时不可用");
+      }),
+      fetchKimiK3Trending(controller.signal).catch((error: unknown) => {
+        if (controller.signal.aborted) return null;
+        throw new Error(error instanceof Error ? error.message : "Kimi k3 行情暂时不可用");
+      }),
+    ])
+      .then(([kimi, k3]) => {
         if (!active) return;
-        setTrending([item]);
+        setTrending([kimi, k3].filter((item): item is TrendingItem => item !== null));
         setTrendingError(null);
       })
       .catch((error) => {
         if (!active || controller.signal.aborted) return;
-        setTrending((current) => [readCachedOfficialKimi(current)]);
-        setTrendingError(error instanceof Error ? error.message : "官方 KIMI 行情暂时不可用");
+        setTrending((current) => [
+          readCachedOfficialKimi(current),
+          readCachedKimiK3(current),
+        ]);
+        setTrendingError(error instanceof Error ? error.message : "热搜行情暂时不可用");
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -58,16 +73,22 @@ export function useContractData() {
     };
   }, []);
 
-  /** 从 DexScreener 刷新官方 KIMI 的 PancakeSwap V2 实时行情。 */
+  /** 从 DexScreener 刷新官方 KIMI 与 Kimi k3 的实时行情。 */
   const refreshTrending = async () => {
     setLoading(true);
     setTrendingError(null);
     try {
-      const next = await fetchOfficialKimiTrending();
-      setTrending([next]);
+      const [kimi, k3] = await Promise.all([
+        fetchOfficialKimiTrending(),
+        fetchKimiK3Trending(),
+      ]);
+      setTrending([kimi, k3]);
     } catch (error) {
-      setTrending((current) => [readCachedOfficialKimi(current)]);
-      setTrendingError(error instanceof Error ? error.message : "官方 KIMI 行情暂时不可用");
+      setTrending((current) => [
+        readCachedOfficialKimi(current),
+        readCachedKimiK3(current),
+      ]);
+      setTrendingError(error instanceof Error ? error.message : "热搜行情暂时不可用");
     } finally {
       setLoading(false);
     }
@@ -129,11 +150,14 @@ function readActivities(): ActivityItem[] {
 function readTrending(): TrendingItem[] {
   try {
     const raw = safeGetItem(TRENDING_KEY);
-    if (raw) return [readCachedOfficialKimi(JSON.parse(raw))];
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return [readCachedOfficialKimi(parsed), readCachedKimiK3(parsed)];
+    }
   } catch {
     // 忽略损坏的本地缓存并回退到默认值。
   }
-  return [createOfficialKimiFallback()];
+  return [createOfficialKimiFallback(), createKimiK3Fallback()];
 }
 
 function pushActivity(
