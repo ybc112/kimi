@@ -9,6 +9,11 @@ export const KIMI_K3_TOKEN_ADDRESS = "0x518afd31a57ffb9b06691d55288395105c3c7777
 export const KIMI_K3_DEXSCREENER_API = `https://api.dexscreener.com/latest/dex/tokens/${KIMI_K3_TOKEN_ADDRESS}`;
 export const KIMI_K3_DEXSCREENER_URL = `https://dexscreener.com/bsc/${KIMI_K3_TOKEN_ADDRESS}`;
 
+export const AIDOG_TOKEN_ADDRESS = "0x66FbD3481734Da04d501807C40d6124EAe697777";
+export const AIDOG_PANCAKE_PAIR_ADDRESS = "0xD7C1350A867FA541FCC3D7d2929170935d49ea1f";
+export const AIDOG_DEXSCREENER_API = `https://api.dexscreener.com/latest/dex/tokens/${AIDOG_TOKEN_ADDRESS}`;
+export const AIDOG_DEXSCREENER_URL = `https://dexscreener.com/bsc/${AIDOG_PANCAKE_PAIR_ADDRESS}`;
+
 type DexPair = {
   chainId?: unknown;
   dexId?: unknown;
@@ -114,6 +119,27 @@ export function createKimiK3Fallback(): TrendingItem {
   };
 }
 
+export function createAidogFallback(): TrendingItem {
+  return {
+    rank: 3,
+    name: "Aidog",
+    symbol: "Aidog",
+    address: AIDOG_TOKEN_ADDRESS,
+    price: "行情加载中",
+    change24h: "+0.00%",
+    volume24h: "--",
+    marketCap: "--",
+    hotScore: 1,
+    sparkline: [50, 50, 50, 50, 50, 50, 50, 50, 50, 50],
+    tag: "热搜",
+    url: AIDOG_DEXSCREENER_URL,
+    liquidity: "--",
+    txCount24h: 0,
+    isOfficial: false,
+    source: "fallback",
+  };
+}
+
 function isBasePair(pair: DexPair, tokenAddress: string) {
   return (
     String(pair.chainId || "").toLowerCase() === "bsc" &&
@@ -136,7 +162,8 @@ function parseDexTrending(
   fallbackName: string,
   fallbackSymbol: string,
   defaultPairAddress: string,
-  tag: string
+  tag: string,
+  isOfficial = true
 ): TrendingItem {
   const pairs = Array.isArray((payload as DexPayload | null)?.pairs)
     ? ((payload as { pairs: DexPair[] }).pairs).filter((pair) => isBasePair(pair, tokenAddress))
@@ -168,7 +195,7 @@ function parseDexTrending(
     txCount24h,
     pairCreatedAt: finiteNumber(pair.pairCreatedAt) ?? undefined,
     updatedAt: Date.now(),
-    isOfficial: true,
+    isOfficial,
     source: "dexscreener",
   };
 }
@@ -179,6 +206,10 @@ export function parseOfficialKimiTrending(payload: unknown): TrendingItem {
 
 export function parseKimiK3Trending(payload: unknown): TrendingItem {
   return parseDexTrending(payload, KIMI_K3_TOKEN_ADDRESS, "Kimi k3", "Kimi k3", KIMI_K3_TOKEN_ADDRESS, "官方 KIMI");
+}
+
+export function parseAidogTrending(payload: unknown): TrendingItem {
+  return parseDexTrending(payload, AIDOG_TOKEN_ADDRESS, "Aidog", "Aidog", AIDOG_PANCAKE_PAIR_ADDRESS, "热搜", false);
 }
 
 export async function fetchOfficialKimiTrending(signal?: AbortSignal): Promise<TrendingItem> {
@@ -197,6 +228,15 @@ export async function fetchKimiK3Trending(signal?: AbortSignal): Promise<Trendin
   });
   if (!response.ok) throw new Error(`K3 行情接口返回 HTTP ${response.status}`);
   return parseKimiK3Trending(await response.json());
+}
+
+export async function fetchAidogTrending(signal?: AbortSignal): Promise<TrendingItem> {
+  const response = await fetch(AIDOG_DEXSCREENER_API, {
+    headers: { Accept: "application/json" },
+    signal,
+  });
+  if (!response.ok) throw new Error(`Aidog 行情接口返回 HTTP ${response.status}`);
+  return parseAidogTrending(await response.json());
 }
 
 export function readCachedOfficialKimi(value: unknown): TrendingItem {
@@ -221,4 +261,16 @@ export function readCachedKimiK3(value: unknown): TrendingItem {
       (item as TrendingItem).address.toLowerCase() === KIMI_K3_TOKEN_ADDRESS.toLowerCase()
   );
   return cached ? { ...createKimiK3Fallback(), ...cached, rank: 2, isOfficial: true } : createKimiK3Fallback();
+}
+
+export function readCachedAidog(value: unknown): TrendingItem {
+  if (!Array.isArray(value)) return createAidogFallback();
+  const cached = value.find(
+    (item): item is TrendingItem =>
+      Boolean(item) &&
+      typeof item === "object" &&
+      typeof (item as TrendingItem).address === "string" &&
+      (item as TrendingItem).address.toLowerCase() === AIDOG_TOKEN_ADDRESS.toLowerCase()
+  );
+  return cached ? { ...createAidogFallback(), ...cached, rank: 3, isOfficial: false } : createAidogFallback();
 }

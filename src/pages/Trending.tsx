@@ -39,7 +39,19 @@ const tagColor: Record<string, string> = {
   Staking: "bg-[#F472B6]/10 text-[#F472B6]",
   Factory: "bg-[#9CA3AF]/10 text-[#9CA3AF]",
   "官方 KIMI": "bg-[#D0FF00]/10 text-[#D0FF00]",
+  "热搜": "bg-[#FF6B6B]/10 text-[#FF6B6B]",
 };
+
+/** 按 24h 交易笔数(hotScore)显示热度火焰:≥500 三把火,≥100 两把,≥20 一把。 */
+function HotFlames({ score }: { score: number }) {
+  const count = score >= 500 ? 3 : score >= 100 ? 2 : score >= 20 ? 1 : 0;
+  if (count === 0) return null;
+  return (
+    <span className="ml-1 shrink-0" title={`24h 热度 ${score} 笔交易`}>
+      {"🔥".repeat(count)}
+    </span>
+  );
+}
 
 const shorten = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 
@@ -259,9 +271,7 @@ export default function Trending() {
                       <div className="flex min-w-0 basis-full items-center gap-1.5 sm:basis-auto">
                         <span className="truncate text-sm font-medium text-[#E8E8E8]">
                           {item.name}
-                          {item.address.toLowerCase() === KIMI_K3_TOKEN_ADDRESS.toLowerCase() && (
-                            <span className="ml-1">🔥🔥🔥</span>
-                          )}
+                          <HotFlames score={item.hotScore} />
                         </span>
                         {item.isOfficial && <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-[#D0FF00]" aria-label="官方 KIMI" />}
                       </div>

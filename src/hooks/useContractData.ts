@@ -2,10 +2,13 @@ import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import type { TodayStats, ActivityItem, TrendingItem } from "@/types";
 import { safeGetItem, safeSetItem } from "@/lib/storage";
 import {
+  createAidogFallback,
   createKimiK3Fallback,
   createOfficialKimiFallback,
+  fetchAidogTrending,
   fetchKimiK3Trending,
   fetchOfficialKimiTrending,
+  readCachedAidog,
   readCachedKimiK3,
   readCachedOfficialKimi,
 } from "@/lib/trending";
@@ -50,10 +53,14 @@ export function useContractData() {
         if (controller.signal.aborted) return null;
         throw new Error(error instanceof Error ? error.message : "Kimi k3 行情暂时不可用");
       }),
+      fetchAidogTrending(controller.signal).catch((error: unknown) => {
+        if (controller.signal.aborted) return null;
+        throw new Error(error instanceof Error ? error.message : "Aidog 行情暂时不可用");
+      }),
     ])
-      .then(([kimi, k3]) => {
+      .then(([kimi, k3, aidog]) => {
         if (!active) return;
-        setTrending([kimi, k3].filter((item): item is TrendingItem => item !== null));
+        setTrending([kimi, k3, aidog].filter((item): item is TrendingItem => item !== null));
         setTrendingError(null);
       })
       .catch((error) => {
@@ -61,6 +68,7 @@ export function useContractData() {
         setTrending((current) => [
           readCachedOfficialKimi(current),
           readCachedKimiK3(current),
+          readCachedAidog(current),
         ]);
         setTrendingError(error instanceof Error ? error.message : "热搜行情暂时不可用");
       })
@@ -73,20 +81,22 @@ export function useContractData() {
     };
   }, []);
 
-  /** 从 DexScreener 刷新官方 KIMI 与 Kimi k3 的实时行情。 */
+  /** 从 DexScreener 刷新官方 KIMI、Kimi k3 与 Aidog 的实时行情。 */
   const refreshTrending = async () => {
     setLoading(true);
     setTrendingError(null);
     try {
-      const [kimi, k3] = await Promise.all([
+      const [kimi, k3, aidog] = await Promise.all([
         fetchOfficialKimiTrending(),
         fetchKimiK3Trending(),
+        fetchAidogTrending(),
       ]);
-      setTrending([kimi, k3]);
+      setTrending([kimi, k3, aidog]);
     } catch (error) {
       setTrending((current) => [
         readCachedOfficialKimi(current),
         readCachedKimiK3(current),
+        readCachedAidog(current),
       ]);
       setTrendingError(error instanceof Error ? error.message : "热搜行情暂时不可用");
     } finally {
@@ -152,12 +162,12 @@ function readTrending(): TrendingItem[] {
     const raw = safeGetItem(TRENDING_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      return [readCachedOfficialKimi(parsed), readCachedKimiK3(parsed)];
+      return [readCachedOfficialKimi(parsed), readCachedKimiK3(parsed), readCachedAidog(parsed)];
     }
   } catch {
     // 忽略损坏的本地缓存并回退到默认值。
   }
-  return [createOfficialKimiFallback(), createKimiK3Fallback()];
+  return [createOfficialKimiFallback(), createKimiK3Fallback(), createAidogFallback()];
 }
 
 function pushActivity(
