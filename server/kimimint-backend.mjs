@@ -9,6 +9,7 @@ import {
   Contract,
   ContractFactory,
   JsonRpcProvider,
+  Wallet,
   ZeroAddress,
   getAddress,
   getCreate2Address,
@@ -20,6 +21,7 @@ import {
   randomBytes,
   solidityPackedKeccak256,
 } from "ethers";
+import { createGameSessionService } from "./game-session.mjs";
 
 const rootDir = process.cwd();
 const deployment = readFirstJson(
@@ -56,6 +58,27 @@ const nftFactoryAddress = isAddress(process.env.KIMINFT_FACTORY_ADDRESS || nftDe
   : "";
 const nftFactory = nftFactoryAddress ? new Contract(nftFactoryAddress, nftFactoryArtifact.abi, provider) : null;
 const nftCollectionArtifact = readJson("artifacts/contracts/nft/KimiNFTCollection.sol/KimiNFTCollection.json");
+const gameVaultArtifact = readJson("artifacts/contracts/game/CapyGameVault.sol/CapyGameVault.json", { abi: [] });
+const gameVaultAddress = isAddress(process.env.GAME_VAULT_ADDRESS || "")
+  ? getAddress(process.env.GAME_VAULT_ADDRESS)
+  : "";
+const gameVault = gameVaultAddress ? new Contract(gameVaultAddress, gameVaultArtifact.abi, provider) : null;
+const gameSignerKey = process.env.GAME_SIGNER_PRIVATE_KEY || "";
+const gameSigner = gameSignerKey ? new Wallet(gameSignerKey) : null;
+const gameSessions =
+  gameVault && gameSigner
+    ? createGameSessionService({
+        vault: gameVault,
+        vaultAddress: gameVaultAddress,
+        signerWallet: gameSigner,
+        chainId,
+        provider,
+        levelsPerTier: Number(process.env.GAME_LEVELS_PER_TIER || 10),
+        minSecondsPerLevel: Number(process.env.GAME_MIN_SECONDS_PER_LEVEL || 3),
+        signatureValidity: Number(process.env.GAME_SIG_VALIDITY || 600),
+        maxSessionsPerPlayerPerDay: Number(process.env.GAME_MAX_SESSIONS_PER_DAY || 50),
+      })
+    : null;
 const port = Number(process.env.KIMIMINT_BACKEND_PORT || 8787);
 const backendToken = process.env.KIMIMINT_BACKEND_TOKEN || "";
 const autoVerify = process.env.AUTO_VERIFY_PROJECTS !== "false";
@@ -170,6 +193,80 @@ const server = createServer(async (request, response) => {
       requireToken(request);
       const body = await readBody(request);
       sendJson(response, 200, await findVanitySalt(body));
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname.startsWith("/api/game/leaderboard")) {
+      limitRequest(request, "game", 120);
+      if (!gameSessions) {
+        sendJson(response, 503, { error: "游戏金库或签名钱包未配置" });
+        return;
+      }
+      const epochParam = url.searchParams.get("epoch");
+      const currentEpoch = Number(await gameVault.currentEpoch());
+      const epoch = epochParam ? Number(epochParam) : Math.max(0, currentEpoch - 1);
+      sendJson(response, 200, {
+        ok: true,
+        currentEpoch,
+        epoch,
+        leaderboard: gameSessions.getLeaderboard(epoch),
+      });
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname.startsWith("/api/game/")) {
+      limitRequest(request, "game", 120);
+      if (!gameSessions) {
+        sendJson(response, 503, { error: "游戏金库或签名钱包未配置" });
+        return;
+      }
+      const body = await readBody(request);
+      const action = url.pathname.slice("/api/game/".length);
+
+      // 1) 开局：必须链上已经付过门票进场
+      if (action === "session/start") {
+        const player = normalizeAddress(body.player || "");
+        if (!player) {
+          sendJson(response, 400, { error: "玩家地址不合法" });
+          return;
+        }
+        sendJson(response, 200, await gameSessions.startSession(player));
+        return;
+      }
+
+      // 2) 上报通过一关：必须严格连续、每关有最短用时
+      if (action === "session/level") {
+        sendJson(response, 200, await gameSessions.reportLevel(body.sessionId, Number(body.level)));
+        return;
+      }
+
+      // 3) 领奖签名：必须整档通关，且链上进场记录仍有效
+      if (action === "sign-reward") {
+        sendJson(response, 200, await gameSessions.signReward(body.sessionId));
+        return;
+      }
+
+      // 4) 排行榜奖励签名：上一 epoch 前三名凭后端排名领取
+      if (action === "leaderboard/claim") {
+        const player = normalizeAddress(body.player || "");
+        sendJson(
+          response,
+          200,
+          await gameSessions.signLeaderboardReward(player, body.epochId, body.rank),
+        );
+        return;
+      }
+
+      sendJson(response, 404, { error: "Not found" });
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/game/stats") {
+      if (!gameSessions) {
+        sendJson(response, 503, { error: "游戏金库或签名钱包未配置" });
+        return;
+      }
+      sendJson(response, 200, { ok: true, ...gameSessions.stats() });
       return;
     }
 

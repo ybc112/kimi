@@ -1,0 +1,30 @@
+{
+  "network": "bsc",
+  "chainId": 56,
+  "vault": "0x7DbF817d49ae053EDc5F205a81Bb2b08422C5F0C",
+  "previousVault": "0x6a3AF9F5192B2254527c7Eabd24b6844e4Ed5994",
+  "previousVaultNote": "已废弃：leaderboardClaimed 按(epoch,rank,player)记账，同一名次可被多个地址各领 5% 奖池",
+  "gameToken": "0x839578f40b9a79a3fe891dd96079f3083e6e7777",
+  "gameTokenSymbol": "卡皮巴拉 (CAPY)",
+  "owner": "0xe1F9Fb65BBb39ebd4d0C204c95513d3f6421c407",
+  "signer": "0x8dcf2C585B3bD5c5E24490cFF809D67C0c04E616",
+  "economics": {
+    "ticket": "20000",
+    "reviveCost": "20000",
+    "itemCost": "5000",
+    "baseRewardBps": 18000,
+    "tierBonusBps": 1000,
+    "tierBonusCapBps": 2000,
+    "rewardTier0": "36000",
+    "rewardTier1": "38000",
+    "rewardTierCap": "40000"
+  },
+  "limits": { "perPlayerPerDay": "200000", "globalPerDay": "5000000", "signatureValiditySec": 600 },
+  "checkIn": { "cost": "10000", "durationDays": 7 },
+  "itemSplit": { "burnBps": 4000, "poolBps": 6000 },
+  "leaderboard": { "rank1Bps": 500, "rank2Bps": 200, "rank3Bps": 100, "epochDurationDays": 1 },
+  "solc": "0.8.28", "viaIR": true, "evmVersion": "cancun", "optimizerRuns": 200,
+  "verified": "https://bscscan.com/address/0x7DbF817d49ae053EDc5F205a81Bb2b08422C5F0C#code",
+  "deployTx": "0x031a729af49e5a094f99109649d8e611f406dc9fa081a8b89c4e217bfabf718e",
+  "deployedAt": "2026-08-07T01:00:00.000Z"
+}
