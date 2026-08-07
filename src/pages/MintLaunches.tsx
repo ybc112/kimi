@@ -234,14 +234,6 @@ export default function MintLaunches() {
                   </div>
                 </div>
 
-                <div className="mt-3 rounded-lg border border-[#D0FF00]/20 bg-[#D0FF00]/5 p-2 text-xs">
-                  <div className="text-[#6B7280]">平台税收份额（从交易税中提取）</div>
-                  <div className="mt-0.5 text-[#D0FF00]">{project.platformFeeBps / 100}% · 达阈值后兑换结算</div>
-                  <p className="mt-1 text-[10px] text-[#6B7280]">
-                    该比例从已收取的买卖税中提取，不是对交易额额外征收。
-                  </p>
-                </div>
-
                 <div className="mt-4 flex items-center justify-between">
                   <div className="flex items-center gap-1.5 text-xs">
                     <Clock className="h-3.5 w-3.5 text-[#6B7280]" />

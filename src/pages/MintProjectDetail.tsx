@@ -284,16 +284,6 @@ export default function MintProjectDetail() {
           </div>
         </div>
 
-        <div className="mt-4 rounded-xl border border-[#D0FF00]/25 bg-[#D0FF00]/5 p-4 text-xs leading-5 text-[#C8D0D8]">
-          <div className="font-semibold text-[#D0FF00]">平台税收份额：{project.platformFeeBps / 100}%</div>
-          <div className="mt-1">
-            该比例从已收取的买卖税中提取，先滞留在代币合约，达到兑换阈值后兑换为 BNB 并发送至平台收款地址；不是额外叠加在交易额上的税。
-          </div>
-          <div className="mt-1 font-mono text-[#9CA3AF]">收款地址：{shortAddress(project.platformFeeReceiver)}</div>
-        </div>
-        <p className="mt-1 text-[10px] text-[#6B7280]">
-          该比例从已收取的买卖税中提取，不是对交易额额外征收。
-        </p>
 
         {project.finalized && (
           <Link
