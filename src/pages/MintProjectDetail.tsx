@@ -291,6 +291,9 @@ export default function MintProjectDetail() {
           </div>
           <div className="mt-1 font-mono text-[#9CA3AF]">收款地址：{shortAddress(project.platformFeeReceiver)}</div>
         </div>
+        <p className="mt-1 text-[10px] text-[#6B7280]">
+          该比例从已收取的买卖税中提取，不是对交易额额外征收。
+        </p>
 
         {project.finalized && (
           <Link

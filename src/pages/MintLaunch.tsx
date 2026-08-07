@@ -911,7 +911,7 @@ export default function MintLaunch() {
                 },
                 { label: "白名单", value: whitelistEnabled ? "开启" : "关闭", highlight: whitelistEnabled },
                 { label: "税率", value: `${buyTax}% / ${sellTax}%` },
-                { label: "平台税收份额", value: `${MINT_PLATFORM_TAX_SHARE_BPS / 100}%（从交易税中提取）` },
+                { label: "平台税收份额", value: `${MINT_PLATFORM_TAX_SHARE_BPS / 100}%（从已收取的买卖税中提取，非额外征收）` },
               ].map((item) => (
                 <div key={item.label} className="flex justify-between border-b border-[#25282C]/50 pb-2 text-[#9CA3AF] last:border-0 last:pb-0">
                   <span>{item.label}</span>
