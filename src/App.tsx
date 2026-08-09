@@ -21,6 +21,7 @@ const NFTLaunch = lazy(() => import("@/pages/NFTLaunch"));
 const NFTLaunches = lazy(() => import("@/pages/NFTLaunches"));
 const NFTProjectDetail = lazy(() => import("@/pages/NFTProjectDetail"));
 const Swap = lazy(() => import("@/pages/Swap"));
+const Ido = lazy(() => import("@/pages/Ido"));
 
 function PageLoading() {
   return (
@@ -56,6 +57,7 @@ export default function App() {
             <Route path="/nft-launches" element={<NFTLaunches />} />
             <Route path="/nft/:collection" element={<NFTProjectDetail />} />
             <Route path="/swap" element={<Swap />} />
+            <Route path="/ido" element={<Ido />} />
           </Routes>
         </Suspense>
       </Layout>
