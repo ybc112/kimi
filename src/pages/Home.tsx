@@ -19,6 +19,7 @@ import {
   Clock,
 } from "lucide-react";
 import { KimiIcon } from "@/components/KimiIcon";
+import { IdoProgress } from "@/components/IdoProgress";
 import { useContractData } from "@/hooks/useContractData";
 import { cn } from "@/lib/utils";
 import { SNOWBALL_LAUNCHPAD_ADDRESS } from "@/lib/contracts/snowball";
@@ -163,6 +164,9 @@ export default function Home() {
             立即参与
             <ArrowRight className="h-4 w-4" />
           </button>
+        </div>
+        <div className="relative mt-4 max-w-xl">
+          <IdoProgress compact />
         </div>
       </div>
 

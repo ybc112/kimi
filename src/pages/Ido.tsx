@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
   Check,
+  CheckCircle2,
   CircleDollarSign,
   Copy,
   ExternalLink,
@@ -14,6 +15,7 @@ import {
 import { useWallet } from "@/hooks/useWallet";
 import { useAppStore } from "@/store";
 import { cn } from "@/lib/utils";
+import { IdoProgress } from "@/components/IdoProgress";
 import {
   IDO_AMOUNT_OPTIONS,
   IDO_HARD_CAP_BNB,
@@ -23,6 +25,11 @@ import {
   shortIdoAddress,
 } from "@/lib/ido";
 
+type IdoResult = {
+  hash: string;
+  amount: number;
+};
+
 export default function Ido() {
   const navigate = useNavigate();
   const wallet = useWallet();
@@ -30,6 +37,7 @@ export default function Ido() {
   const [amount, setAmount] = useState<number>(0.1);
   const [copied, setCopied] = useState(false);
   const [sending, setSending] = useState(false);
+  const [result, setResult] = useState<IdoResult | null>(null);
 
   const copyAddress = async () => {
     try {
@@ -66,7 +74,8 @@ export default function Ido() {
       showToast({ type: "success", message: `转账已提交：${amount} BNB` });
       showToast({ type: "info", message: `等待确认：${tx.hash.slice(0, 10)}...` });
       await tx.wait();
-      showToast({ type: "success", message: "转账已确认 ✅ 请保留交易哈希，等待平台确认认购" });
+      setResult({ hash: tx.hash, amount });
+      showToast({ type: "success", message: `已成功认购 ${amount} BNB，等待平台确认` });
     } catch (err) {
       showToast({ type: "error", message: err instanceof Error ? err.message : "转账失败" });
     } finally {
@@ -121,6 +130,11 @@ export default function Ido() {
                 </p>
               </div>
             ))}
+          </div>
+
+          {/* IDO 进度条：已募金额 = 收款地址链上 BNB 余额，15s 轮询 */}
+          <div className="mt-6 rounded-xl border border-[#25282C] bg-[#0A0B0D] p-4">
+            <IdoProgress />
           </div>
         </div>
       </div>
@@ -235,6 +249,52 @@ export default function Ido() {
           </p>
         )}
       </div>
+
+      {/* 参与成功反馈 */}
+      {result && (
+        <div className="rounded-2xl border border-[#D0FF00]/30 bg-[#D0FF00]/5 p-5">
+          <div className="flex items-center gap-2 text-[#D0FF00]">
+            <CheckCircle2 className="h-5 w-5" />
+            <span className="font-bold">参与成功 🎉</span>
+          </div>
+          <p className="mt-2 text-sm text-[#9CA3AF]">
+            已向收款地址转账{" "}
+            <span className="font-bold text-white">{result.amount} BNB</span>
+            ，交易已上链确认，认购记录已生成。
+          </p>
+          <div className="mt-3 flex items-center gap-2 rounded-xl border border-[#25282C] bg-[#0A0B0D] px-3 py-2">
+            <code className="min-w-0 flex-1 break-all font-mono text-xs text-[#2EDEDB]">
+              {result.hash}
+            </code>
+            <button
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(result.hash);
+                  showToast({ type: "success", message: "交易哈希已复制" });
+                } catch {
+                  /* ignore */
+                }
+              }}
+              className="shrink-0 rounded-lg p-1 text-[#9CA3AF] transition hover:text-white"
+              title="复制交易哈希"
+            >
+              <Copy className="h-3.5 w-3.5" />
+            </button>
+            <a
+              href={`https://bscscan.com/tx/${result.hash}`}
+              target="_blank"
+              rel="noreferrer"
+              className="shrink-0 rounded-lg p-1 text-[#9CA3AF] transition hover:text-white"
+              title="在 BscScan 查看交易"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+          </div>
+          <p className="mt-3 text-xs text-[#6B7280]">
+            平台人工确认后将计入认购份额；上方进度条将在几秒内自动刷新。
+          </p>
+        </div>
+      )}
 
       {/* Steps & warning */}
       <div className="kimi-card">
