@@ -58,6 +58,7 @@ for (const t of targets) {
       evmVersion: bi.input.settings.evmVersion,
       optimizer: bi.input.settings.optimizer,
       ...(bi.input.settings.debug ? { debug: bi.input.settings.debug } : {}),
+      ...(bi.input.settings.metadata ? { metadata: bi.input.settings.metadata } : {}),
     },
   };
   const outFile = path.join(outDir, `${t.name}-input.json`);
