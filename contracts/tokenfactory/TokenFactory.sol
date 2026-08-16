@@ -24,7 +24,7 @@ interface IBananaTokenDeployer {
 ///   1. 接收前端傻瓜式参数（只填名称/符号/总量/项目方/fund/分红币/交易对币/
 ///      总买税/总卖税/四项占比/开盘保护/限买限卖限钱包/单边燃烧参数）
 ///   2. 平台费固定 20% 内部计算，用户不传：
-///        platformFee  = totalTax × 20%                    → 并入 fund 通道
+///        platformFee  = totalTax × 20%                    → 独立平台收款地址
 ///        leftTax      = totalTax − platformFee
 ///        rewardFee    = leftTax × rewardShare / 10000
 ///        liquidityFee = leftTax × liquidityShare / 10000
@@ -48,7 +48,7 @@ contract TokenFactory {
     address public constant LP_BLACK_HOLE = 0x000000000000000000000000000000000000dEaD;
     address public constant DEFAULT_REWARD_TOKEN = 0x55d398326f99059fF775485246999027B3197955; // BSC USDT
 
-    address public feeRecipient;          // 发币费收款（fundAddress 默认指向这里）
+    address public feeRecipient;          // 发币费 + 固定平台税收款（fundAddress 默认也指向这里）
     uint256 public creationFee;           // 发币费（BNB）
     address public router;                // PancakeSwap Router
     address public dividendTrackerImpl;   // BABYTOKENDividendTracker 实现（Clones.clone 用）
@@ -70,7 +70,7 @@ contract TokenFactory {
         string symbol;
         uint256 totalSupply;
         address receiver;        // 项目方地址（ReceiveAddress + owner）
-        address fundAddress;     // fund 收款地址（含平台 20% 抽成 + 项目 fund 余数；0 = feeRecipient）
+        address fundAddress;     // 项目 fund 收款地址（不含平台税；0 = feeRecipient）
         address rewardToken;     // 分红币地址（0 = USDT 默认）
         address currency;        // 交易对币地址（0 = WBNB 原生）
         uint256 totalBuyTax;     // 总买税 bps（如 500 = 5%）
@@ -97,13 +97,14 @@ contract TokenFactory {
         uint256 rewardFee;
         uint256 liquidityFee;
         uint256 burnFee;
-        uint256 fundFee; // 含平台费（数组值 = platformFee + 项目 fund 余数）
+        uint256 fundFee; // 仅项目 fund 余数；传入 BananaToken 时再与 platformFee 相加
     }
 
     error InvalidFee();
     error InvalidParams();
     error InvalidTokenSuffix(address token, uint16 requiredSuffix);
     error ZeroAddress();
+    error TokenTransferFailed();
 
     event TokenCreated(
         address indexed creator,
@@ -339,7 +340,7 @@ contract TokenFactory {
         address pair = IUniswapV2Factory(IUniswapV2Router02(router).factory()).getPair(token, wbnb);
         BananaToken bt = BananaToken(payable(token));
 
-        bt.approve(router, type(uint256).max);
+        if (!bt.approve(router, type(uint256).max)) revert TokenTransferFailed();
         (, , uint256 liquidity) = IUniswapV2Router02(router).addLiquidityETH{ value: addLiquidityEth }(
             token,
             addLiquidityTokens,
@@ -351,15 +352,15 @@ contract TokenFactory {
 
         // LP 锁死（永久锁定，对标"LP 转黑洞 / 锁仓"）
         if (liquidity > 0 && pair != address(0)) {
-            IERC20(pair).transfer(LP_BLACK_HOLE, liquidity);
+            if (!IERC20(pair).transfer(LP_BLACK_HOLE, liquidity)) revert TokenTransferFailed();
         }
 
         // 剩余币转项目方
         uint256 remaining = bt.balanceOf(address(this));
         if (remaining > 0) {
-            bt.transfer(params.receiver, remaining);
+            if (!bt.transfer(params.receiver, remaining)) revert TokenTransferFailed();
         }
-        bt.approve(router, 0);
+        if (!bt.approve(router, 0)) revert TokenTransferFailed();
 
         // 开盘（owner 此时是 Factory）→ owner 转项目方
         bt.launch();
@@ -399,7 +400,8 @@ contract TokenFactory {
     }
 
     function _buildNumberParams(LaunchParams calldata params) private pure returns (uint256[] memory numberParams) {
-        // 平台 20% 固定内部算：platformFee 并入 fund 通道
+        // 平台 20% 固定内部计算。BananaToken 的兼容 fund 费率字段保存
+        // platform + project fund 总和，末尾两个索引另传平台份额用于独立记账。
         FeeSplit memory buy = _splitFee(params.totalBuyTax, params.rewardShare, params.liquidityShare, params.burnShare);
         FeeSplit memory sell = _splitFee(params.totalSellTax, params.rewardShare, params.liquidityShare, params.burnShare);
 
@@ -472,7 +474,7 @@ contract TokenFactory {
         if (withLiquidity && params.currency != address(0) && params.currency != IUniswapV2Router02(router).WETH()) {
             revert InvalidParams();
         }
-        if (params.airdropNumbs > 3 || params.transferFee > MAX_TAX_BPS) {
+        if (params.airdropNumbs > 3 || params.transferFee > MAX_TAX_BPS || params.killBlocks > 100) {
             revert InvalidParams();
         }
         if (params.percentForLPBurn == 0 || params.percentForLPBurn > 100) {

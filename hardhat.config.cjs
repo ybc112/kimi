@@ -45,12 +45,12 @@ module.exports = {
       // 用同一设置生成的 artifacts 才能匹配。
       "contracts/tokenfactory/BananaToken.sol": {
         version: "0.8.24",
-        settings: { viaIR: true, evmVersion: "cancun", debug: { revertStrings: "strip" }, optimizer: { enabled: true, runs: 1, details: { yul: true } } },
+        settings: { viaIR: true, evmVersion: "cancun", debug: { revertStrings: "strip" }, metadata: { bytecodeHash: "none" }, optimizer: { enabled: true, runs: 1, details: { yul: true } } },
       },
       // runs=1 压缩，使内嵌 BananaToken creation code 后总字节 < 24576
       "contracts/tokenfactory/BananaTokenDeployer.sol": {
         version: "0.8.24",
-        settings: { viaIR: true, evmVersion: "cancun", debug: { revertStrings: "strip" }, optimizer: { enabled: true, runs: 1, details: { yul: true } } },
+        settings: { viaIR: true, evmVersion: "cancun", debug: { revertStrings: "strip" }, metadata: { bytecodeHash: "none" }, optimizer: { enabled: true, runs: 1, details: { yul: true } } },
       },
       // evmVersion=cancun 后 viaIR 无 YulException（paris 才有栈深 bug）
       "contracts/tokenfactory/TokenFactory.sol": {

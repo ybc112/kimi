@@ -1738,7 +1738,9 @@ contract BananaToken is ERC20, Ownable {
     uint256 public tokensForRewards;
     uint256 public pendingPlatformCurrency;
     uint256 public pendingFundCurrency;
+    uint256 public pendingRewardCurrency;
     event NativeFeePending(address indexed receiver, uint256 amount);
+    event RewardCurrencyPending(uint256 amount);
     uint256 public swapAtAmount;
     uint256 public kb;
     uint256 public maxBuyAmount;
@@ -1770,6 +1772,7 @@ contract BananaToken is ERC20, Ownable {
     event ProcessedDividendTracker(uint256 iterations, uint256 claims,  uint256 lastProcessedIndex, bool indexed automatic,uint256 gas, address indexed processor);
     event Failed_swapExactTokensForTokensSupportingFeeOnTransferTokens(uint256);
     event Failed_addLiquidity();
+    event ManualSwapBack(address indexed operator, uint256 processedTokens);
     event GasForProcessingUpdated( uint256 indexed newValue, uint256 indexed oldValue);
     event BindEvent(address indexed user, address indexed inviter, uint256 time);
 
@@ -2020,10 +2023,16 @@ contract BananaToken is ERC20, Ownable {
         uint256 liquiditySwapTokens = liquidityTokens - lpTokenAmount;
         uint256 swapTokenAmount = tokenAmount - lpTokenAmount;
 
+        // Only distribute currency produced by this swap. Existing balances may back
+        // pending native payments or a previous failed reward-token conversion.
+        IERC20 _c = IERC20(currency);
+        uint256 currencyBefore = _c.balanceOf(address(this));
+
         // swap
         if (!swapTokensForCurrency(swapTokenAmount)) return;
-        IERC20 _c = IERC20(currency);
-        uint256 currencyBal = _c.balanceOf(address(this));
+        uint256 currencyAfter = _c.balanceOf(address(this));
+        if (currencyAfter <= currencyBefore) return;
+        uint256 currencyBal = currencyAfter - currencyBefore;
         uint256 totalSwapTokens = platformTokens + fundTokens + rewardTokens + liquiditySwapTokens;
         if (totalSwapTokens == 0) return;
 
@@ -2066,36 +2075,44 @@ contract BananaToken is ERC20, Ownable {
 
         // dividend
         uint256 dividendsAmount = (currencyBal * rewardTokens) / totalSwapTokens;
-        if (dividendsAmount > 0) {
+        uint256 rewardCurrencyAmount = dividendsAmount + pendingRewardCurrency;
+        pendingRewardCurrency = 0;
+        if (rewardCurrencyAmount > 0) {
             IERC20 _rewardToken = IERC20(ETH);
-            uint256 rewardBefore = _rewardToken.balanceOf(address(this));
+            uint256 newRewardTokenAmount;
             if(ETH != currency) {
+              uint256 rewardBefore = _rewardToken.balanceOf(address(this));
               address[] memory buyRewardTokenPath = new address[](2);
               buyRewardTokenPath[0] = address(currency);
               buyRewardTokenPath[1] = address(ETH);
               try
                 _swapRouter
                     .swapExactTokensForTokensSupportingFeeOnTransferTokens(
-                        dividendsAmount,
+                        rewardCurrencyAmount,
                         0,
                         buyRewardTokenPath,
                         address(this),
                         block.timestamp
                     )
               {} catch {
+                pendingRewardCurrency = rewardCurrencyAmount;
+                emit RewardCurrencyPending(rewardCurrencyAmount);
                 emit Failed_swapExactTokensForTokensSupportingFeeOnTransferTokens(
                     0
                 );
               }
+              newRewardTokenAmount = _rewardToken.balanceOf(address(this)) - rewardBefore;
+            } else {
+              // No second swap is needed when the reward token is the pair currency.
+              newRewardTokenAmount = rewardCurrencyAmount;
             }
-            
-            uint256 newRewardTokenAmount = _rewardToken.balanceOf(address(this)) - rewardBefore;
+
             // to swap
-            if (dividendTracker.totalSupply() == 0) {
+            if (newRewardTokenAmount > 0 && dividendTracker.totalSupply() == 0) {
                 if (newRewardTokenAmount > 0) {
                     _rewardToken.transfer(address(fundAddress), newRewardTokenAmount);
                 }
-            } else {
+            } else if (newRewardTokenAmount > 0) {
                 bool success = _rewardToken.transfer(
                     address(dividendTracker),
                     newRewardTokenAmount
@@ -2335,11 +2352,17 @@ contract BananaToken is ERC20, Ownable {
             addr != _mainPair,
             "ETHBack: The PanETHSwap pair cannot be removed from _swapPairList"
         );
+        if (enable) {
+            require(!_feeWhiteList[addr], "BananaToken: fee-whitelisted pair");
+        }
         _setAutomatedMarketMakerPair(addr, enable);
     }
 
     function setFeeWhiteList( address[] calldata addr, bool enable) public onlyOwner {
         for (uint256 i = 0; i < addr.length; i++) {
+            if (enable) {
+                require(!_swapPairList[addr[i]], "BananaToken: pair cannot be fee-free");
+            }
             _feeWhiteList[addr[i]] = enable;
         }
     }
@@ -2358,6 +2381,27 @@ contract BananaToken is ERC20, Ownable {
 
     function setSwapAndLiquifyEnabled(bool status) public onlyOwner {
         swapAndLiquifyEnabled = status;
+    }
+
+    /// @notice Manually processes the fee buckets using the same accounting path
+    ///         as automatic swap-back. The caller cannot choose an arbitrary amount,
+    ///         so platform, fund, liquidity and reward accounting cannot be bypassed.
+    function manualSwapBack() external onlyOwner {
+        require(!swapping, "BananaToken: swap already running");
+
+        uint256 bucketTokens =
+            tokensForPlatform + tokensForFund + tokensForLiquidity + tokensForRewards;
+        require(bucketTokens > 0, "BananaToken: no fees to process");
+        require(balanceOf(address(this)) >= bucketTokens, "BananaToken: fee balance mismatch");
+
+        swapping = true;
+        distributeCurrency(bucketTokens);
+        swapping = false;
+
+        uint256 remainingBuckets =
+            tokensForPlatform + tokensForFund + tokensForLiquidity + tokensForRewards;
+        require(remainingBuckets < bucketTokens, "BananaToken: manual swap back failed");
+        emit ManualSwapBack(msg.sender, bucketTokens - remainingBuckets);
     }
 
 
