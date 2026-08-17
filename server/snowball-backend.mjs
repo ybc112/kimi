@@ -125,16 +125,16 @@ if (WATCH_ENABLED) {
   console.log("auto-verify watch enabled (interval", WATCH_INTERVAL_MS + "ms)");
 }
 
-// ── CREATE2 token address（复刻前端 computeTokenAddress，参数编码完全一致） ──
-function computeTokenAddress(deployerAddr, salt, params) {
+// CREATE2 init-code hash is constant for one request. Computing it inside the
+// salt loop hashes the full token bytecode on every attempt and is very slow.
+function computeInitCodeHash(params) {
   const abiCoder = AbiCoder.defaultAbiCoder();
   const encoded = abiCoder.encode(
     ["string[]", "address[]", "uint256[]", "bool[]", "uint256[]"],
     [params.stringParams, params.addressParams, params.numberParams, params.boolParams, []]
   );
   const bytecode = bananaBytecode + encoded.slice(2);
-  const initHash = keccak256(bytecode);
-  return getCreate2Address(deployerAddr, salt, initHash);
+  return keccak256(bytecode);
 }
 
 // ── Etherscan v2 verify submit（POST + 代理，不传 constructorArguements） ──
@@ -196,13 +196,14 @@ async function findVanitySalt(body) {
   if (!Array.isArray(params.stringParams) || !Array.isArray(params.addressParams) || !Array.isArray(params.numberParams) || !Array.isArray(params.boolParams)) {
     throw new Error("params must include stringParams/addressParams/numberParams/boolParams arrays.");
   }
-  const maxIterations = Math.min(Number(body.maxIterations) || 50000, 500000);
+  const maxIterations = Math.min(Number(body.maxIterations) || 300000, 500000);
 
   const deployerAddr = getAddress(await factory.tokenDeployer());
+  const initHash = computeInitCodeHash(params);
   const startedAt = Date.now();
   for (let attempts = 1; attempts <= maxIterations; attempts += 1) {
     const salt = hexlify(randomBytes(32));
-    const address = computeTokenAddress(deployerAddr, salt, params);
+    const address = getCreate2Address(deployerAddr, salt, initHash);
     if (address.toLowerCase().endsWith(requestedSuffix)) {
       return {
         ok: true,
