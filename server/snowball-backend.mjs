@@ -22,6 +22,7 @@ const { HttpsProxyAgent } = proxyPkg;
 
 const PORT = Number(process.env.SNOWBALL_PORT || 8794);
 const FACTORY_ADDRESS = (process.env.SNOWBALL_FACTORY_ADDRESS || "0xDa80B6d6A495e5AA4870391D36E7F9628Be7f79A").toLowerCase();
+const TOKEN_DEPLOYER_ADDRESS = String(process.env.SNOWBALL_TOKEN_DEPLOYER_ADDRESS || "").trim();
 const CHAIN_ID = Number(process.env.SNOWBALL_CHAIN_ID || 56);
 const rpcUrl = process.env.BSC_RPC_URL || "https://bsc.publicnode.com";
 const API_KEY = process.env.BSCSCAN_API_KEY || "";
@@ -198,7 +199,9 @@ async function findVanitySalt(body) {
   }
   const maxIterations = Math.min(Number(body.maxIterations) || 300000, 500000);
 
-  const deployerAddr = getAddress(await factory.tokenDeployer());
+  const deployerAddr = isAddress(TOKEN_DEPLOYER_ADDRESS)
+    ? getAddress(TOKEN_DEPLOYER_ADDRESS)
+    : getAddress(await factory.tokenDeployer());
   const initHash = computeInitCodeHash(params);
   const startedAt = Date.now();
   for (let attempts = 1; attempts <= maxIterations; attempts += 1) {
