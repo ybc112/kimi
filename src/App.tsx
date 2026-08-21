@@ -1,27 +1,46 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, type ComponentType } from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { Layout } from "@/components/Layout";
 
-const Home = lazy(() => import("@/pages/Home"));
-const Chat = lazy(() => import("@/pages/Chat"));
-const Deploy = lazy(() => import("@/pages/Deploy"));
-const Docs = lazy(() => import("@/pages/Docs"));
-const Logs = lazy(() => import("@/pages/Logs"));
-const Trending = lazy(() => import("@/pages/Trending"));
-const MemeLaunch = lazy(() => import("@/pages/MemeLaunch"));
-const FlapLaunch = lazy(() => import("@/pages/FlapLaunch"));
-const IssuedTokens = lazy(() => import("@/pages/IssuedTokens"));
-const PageBuilder = lazy(() => import("@/pages/PageBuilder"));
-const TokenAudit = lazy(() => import("@/pages/TokenAudit"));
-const MintLaunch = lazy(() => import("@/pages/MintLaunch"));
-const MintLaunches = lazy(() => import("@/pages/MintLaunches"));
-const MintProjectDetail = lazy(() => import("@/pages/MintProjectDetail"));
-const NFTLaunch = lazy(() => import("@/pages/NFTLaunch"));
-const NFTLaunches = lazy(() => import("@/pages/NFTLaunches"));
-const NFTProjectDetail = lazy(() => import("@/pages/NFTProjectDetail"));
-const Swap = lazy(() => import("@/pages/Swap"));
-const Ido = lazy(() => import("@/pages/Ido"));
+// 路由懒加载兜底：部署更新后旧资源被清理，缓存中的旧 chunk 会加载失败，
+// 此时刷新一次页面拉取最新的 index.html 即可自愈。
+function lazyWithRetry<T extends ComponentType<any>>(
+  factory: () => Promise<{ default: T }>
+) {
+  let retried = false;
+  return lazy(async () => {
+    try {
+      return await factory();
+    } catch (error) {
+      if (!retried) {
+        retried = true;
+        window.location.reload();
+      }
+      throw error;
+    }
+  });
+}
+
+const Home = lazyWithRetry(() => import("@/pages/Home"));
+const Chat = lazyWithRetry(() => import("@/pages/Chat"));
+const Deploy = lazyWithRetry(() => import("@/pages/Deploy"));
+const Docs = lazyWithRetry(() => import("@/pages/Docs"));
+const Logs = lazyWithRetry(() => import("@/pages/Logs"));
+const Trending = lazyWithRetry(() => import("@/pages/Trending"));
+const MemeLaunch = lazyWithRetry(() => import("@/pages/MemeLaunch"));
+const FlapLaunch = lazyWithRetry(() => import("@/pages/FlapLaunch"));
+const IssuedTokens = lazyWithRetry(() => import("@/pages/IssuedTokens"));
+const PageBuilder = lazyWithRetry(() => import("@/pages/PageBuilder"));
+const TokenAudit = lazyWithRetry(() => import("@/pages/TokenAudit"));
+const MintLaunch = lazyWithRetry(() => import("@/pages/MintLaunch"));
+const MintLaunches = lazyWithRetry(() => import("@/pages/MintLaunches"));
+const MintProjectDetail = lazyWithRetry(() => import("@/pages/MintProjectDetail"));
+const NFTLaunch = lazyWithRetry(() => import("@/pages/NFTLaunch"));
+const NFTLaunches = lazyWithRetry(() => import("@/pages/NFTLaunches"));
+const NFTProjectDetail = lazyWithRetry(() => import("@/pages/NFTProjectDetail"));
+const Swap = lazyWithRetry(() => import("@/pages/Swap"));
+const Ido = lazyWithRetry(() => import("@/pages/Ido"));
 
 function PageLoading() {
   return (
