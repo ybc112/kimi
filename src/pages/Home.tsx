@@ -19,11 +19,9 @@ import {
   Clock,
 } from "lucide-react";
 import { KimiIcon } from "@/components/KimiIcon";
-import { IdoProgress } from "@/components/IdoProgress";
 import { useContractData } from "@/hooks/useContractData";
 import { cn } from "@/lib/utils";
 import { SNOWBALL_LAUNCHPAD_ADDRESS } from "@/lib/contracts/snowball";
-import { IDO_HARD_CAP_BNB, IDO_SOFT_CAP_BNB } from "@/lib/ido";
 
 const features = [
   {
@@ -129,47 +127,6 @@ export default function Home() {
 
   return (
     <div className="flex min-h-[calc(100vh-8rem)] flex-col gap-6 lg:gap-8">
-      {/* KIMIAI IDO banner — 首页第一行 */}
-      <div className="relative overflow-hidden rounded-2xl border border-[#D0FF00]/25 bg-gradient-to-r from-[#111215] via-[#141710] to-[#0F1513] p-5 lg:p-6">
-        <div className="absolute -right-16 -top-16 h-44 w-44 rounded-full bg-[#D0FF00]/15 blur-3xl" />
-        <div className="absolute bottom-0 right-1/3 h-28 w-28 rounded-full bg-[#2EDEDB]/10 blur-3xl" />
-        <div className="relative flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-start gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#D0FF00] text-black">
-              <CircleDollarSign className="h-6 w-6" />
-            </div>
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-md bg-[#D0FF00] px-1.5 py-0.5 text-[10px] font-bold text-black">
-                  IDO 预售中
-                </span>
-                <span className="text-sm font-medium text-[#9CA3AF]">
-                  KIMI AI · KIMIAI
-                </span>
-              </div>
-              <h2 className="mt-1 text-lg font-bold text-white lg:text-xl">
-                KIMIAI 预售 · 0.1 ~ 0.5 BNB / 份
-              </h2>
-              <p className="mt-1 text-sm text-[#9CA3AF]">
-                直接向收款地址转账 BNB 即完成认购，软顶{" "}
-                <span className="font-semibold text-[#D0FF00]">{IDO_SOFT_CAP_BNB}</span> BNB
-                / 硬顶 <span className="font-semibold text-[#2EDEDB]">{IDO_HARD_CAP_BNB}</span> BNB
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => navigate("/ido")}
-            className="kimi-btn-primary shrink-0 self-start lg:self-center"
-          >
-            立即参与
-            <ArrowRight className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="relative mt-4 max-w-xl">
-          <IdoProgress compact />
-        </div>
-      </div>
-
       {/* Welcome */}
       <div className="relative overflow-hidden rounded-2xl border border-[#25282C] bg-[#111215] p-6 lg:p-8">
         <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-[#D0FF00]/10 blur-3xl" />
