@@ -12,7 +12,19 @@ export const nftFactoryAbi = [
 ] as const;
 export const nftCollectionAbi = ["function mint(uint256 quantity) payable", "function name() view returns (string)", "function symbol() view returns (string)", "function description() view returns (string)", "function imageURI() view returns (string)", "function baseTokenURI() view returns (string)", "function totalMinted() view returns (uint256)", "function maxSupply() view returns (uint256)", "function mintPrice() view returns (uint256)", "function maxMintPerWallet() view returns (uint256)", "function owner() view returns (address)"] as const;
 export const isNFTLaunchpadConfigured = isAddress(NFT_FACTORY_ADDRESS);
-const backendUrl = String(import.meta.env.VITE_NFT_BACKEND_URL || import.meta.env.VITE_MINT_BACKEND_URL || "https://api.kimi-vault.com").trim().replace(/\/+$/, "");
+const LEGACY_NFT_BACKEND_HOSTS = new Set(["api.kimi-vault.com", "mint.kimi-vault.com"]);
+const rawBackendUrl = String(import.meta.env.VITE_NFT_BACKEND_URL || import.meta.env.VITE_MINT_BACKEND_URL || "https://api.kimi-vault.com").trim().replace(/\/+$/, "");
+const backendUrl = (() => {
+  try {
+    const parsed = new URL(rawBackendUrl);
+    if (LEGACY_NFT_BACKEND_HOSTS.has(parsed.hostname.toLowerCase())) {
+      return globalThis.location?.origin ?? rawBackendUrl;
+    }
+  } catch {
+    /* 相对路径配置，按原值使用 */
+  }
+  return rawBackendUrl;
+})();
 const nftVanitySuffix = String(import.meta.env.VITE_NFT_VANITY_SUFFIX || "7777").replace(/^0x/i, "").toLowerCase();
 export const nftProvider = new JsonRpcProvider(String(import.meta.env.VITE_NFT_RPC_URL || "https://bsc.publicnode.com"), 56);
 

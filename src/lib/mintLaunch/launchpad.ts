@@ -992,10 +992,23 @@ function getPaymentSymbol(paymentToken: string) {
   return "TOKEN";
 }
 
+// 历史配置写死的后端域名（Cloudflare 侧未指向源站）统一回退到同源，
+// 由 Vercel rewrites 把 /api/* 代理到真实后端。
+const LEGACY_BACKEND_HOSTS = new Set(["api.kimi-vault.com", "mint.kimi-vault.com"]);
+
 function normalizeBackendBaseUrl(value: string) {
   const nextValue = value.trim();
-  if (nextValue === "same-origin" && globalThis.location?.origin) {
-    return globalThis.location.origin;
+  const origin = globalThis.location?.origin ?? "";
+  if (!nextValue || nextValue === "same-origin") {
+    return origin;
+  }
+  try {
+    const parsed = new URL(nextValue);
+    if (LEGACY_BACKEND_HOSTS.has(parsed.hostname.toLowerCase())) {
+      return origin;
+    }
+  } catch {
+    return nextValue.replace(/\/+$/, "");
   }
   return nextValue.replace(/\/+$/, "");
 }
