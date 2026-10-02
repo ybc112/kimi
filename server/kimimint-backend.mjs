@@ -26,14 +26,15 @@ import { createGameSessionService } from "./game-session.mjs";
 const rootDir = process.cwd();
 const deployment = readFirstJson(
   [
+    "deployments/bsc-KimiMintLaunchFactoryV2.json",
     "deployments/bsc-KimiMintLaunchFactory.json",
     "deployments/bsc.json",
     "deployments/hardhat-KimiMintLaunchFactory.json",
   ],
   {},
 );
-const factoryArtifact = readJson("artifacts/contracts/mint/KimiMintLaunchFactory.sol/KimiMintLaunchFactory.json");
-const tokenArtifact = readJson("artifacts/contracts/mint/KimiMintToken.sol/KimiMintToken.json");
+const factoryArtifact = readJson("artifacts/contracts/mintV2/KimiMintLaunchFactoryV2.sol/KimiMintLaunchFactoryV2.json");
+const tokenArtifact = readJson("artifacts/contracts/mintV2/KimiMintTokenV2.sol/KimiMintTokenV2.json");
 const nftDeployment = readJson("deployments/bsc-KimiNFTLaunchFactory.json", {});
 const nftFactoryArtifact = readJson("artifacts/contracts/nft/KimiNFTLaunchFactory.sol/KimiNFTLaunchFactory.json", { abi: [] });
 const factorySource =

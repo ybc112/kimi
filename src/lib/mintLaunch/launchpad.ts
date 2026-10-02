@@ -14,7 +14,7 @@ import {
   randomBytes,
   type Signer,
 } from "ethers";
-import { MINT_USDT_ADDRESS } from "./data";
+import { MINT_KIMI_K3_ADDRESS, MINT_USDT_ADDRESS } from "./data";
 import type {
   MintLaunchDraft,
   MintLaunchProject,
@@ -30,8 +30,9 @@ const DEFAULT_APP_BACKEND_URL = "same-origin";
 const configuredBackendUrl =
   String(import.meta.env.VITE_MINT_BACKEND_URL ?? "").trim() || DEFAULT_APP_BACKEND_URL;
 
-export const DEFAULT_MINT_FACTORY_ADDRESS = "0xE1CD783bcE52E8945B0FB539AA106aa35b08879e";
+export const DEFAULT_MINT_FACTORY_ADDRESS = "0xA29E1Ab3F88d950B557d764B1E093E9a03bA98A1";
 const RETIRED_MINT_FACTORY_ADDRESSES = new Set([
+  "0xe1cd783bce52e8945b0fb539aa106aa35b08879e",
   "0x084c85f7cf1d9cf3d638ef75b1561e464884dfbc",
   "0x66a6edf9383c64c87a91fc8c98189cca5a764dbf",
   "0xf4ecf0bd65461dbdb1c9653c8712589da5c46d11",
@@ -145,6 +146,11 @@ const mintVaultWriteAbi = [
   "function setWhitelistEnabled(bool enabled)",
   "function claimRefund()",
   "function mint(uint256 quantity) payable",
+] as const;
+
+const erc20ApproveAbi = [
+  "function allowance(address owner,address spender) view returns (uint256)",
+  "function approve(address spender,uint256 amount) returns (bool)",
 ] as const;
 
 type FactoryLaunchParams = {
@@ -422,6 +428,15 @@ export async function mintLaunchProject(
   const mintQuantity = BigInt(quantity.trim());
   const cost = BigInt(project.mintPriceWei || "0") * mintQuantity;
   const isNativeMint = project.paymentToken.toLowerCase() === ZeroAddress;
+
+  if (!isNativeMint) {
+    const paymentContract = new Contract(project.paymentToken, erc20ApproveAbi, signer);
+    const allowance = BigInt(await paymentContract.allowance(from, project.vault));
+    if (allowance < cost) {
+      const approveTx = await paymentContract.approve(project.vault, cost);
+      await approveTx.wait();
+    }
+  }
 
   const vault = new Contract(project.vault, mintVaultWriteAbi, signer);
   const tx = await vault.mint(mintQuantity, {
@@ -968,7 +983,13 @@ function getPaymentSymbol(paymentToken: string) {
   if (paymentToken.toLowerCase() === ZeroAddress) {
     return "BNB";
   }
-  return paymentToken.toLowerCase() === MINT_USDT_ADDRESS.toLowerCase() ? "USDT" : "TOKEN";
+  if (paymentToken.toLowerCase() === MINT_USDT_ADDRESS.toLowerCase()) {
+    return "USDT";
+  }
+  if (paymentToken.toLowerCase() === MINT_KIMI_K3_ADDRESS.toLowerCase()) {
+    return "KIMI K3";
+  }
+  return "TOKEN";
 }
 
 function normalizeBackendBaseUrl(value: string) {

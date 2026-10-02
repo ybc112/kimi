@@ -28,6 +28,7 @@ import {
   initialMintAllocation,
   initialMintForm,
   mintCreationFeeLabel,
+  mintPaymentTokens,
   MINT_USDT_ADDRESS,
   mintTemplates,
 } from "@/lib/mintLaunch/data";
@@ -67,6 +68,13 @@ const gradientText =
 
 function shortAddress(address: string) {
   return address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "";
+}
+
+function paymentSymbolOf(address: string) {
+  return (
+    mintPaymentTokens.find((token) => token.address.toLowerCase() === address.toLowerCase())?.symbol ??
+    "BNB"
+  );
 }
 
 function compressAvatar(file: File): Promise<string> {
@@ -520,13 +528,30 @@ export default function MintLaunch() {
               <span className={sectionNumber}>03</span>
               Mint 配置
               <span className="ml-auto rounded-md bg-[#1A1D21] px-2 py-0.5 text-xs text-[#9CA3AF]">
-                BNB
+                {paymentSymbolOf(form.paymentToken)}
               </span>
             </div>
 
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <div className="sm:col-span-2">
+                <label className={labelClass}>底池资产</label>
+                <select
+                  className="kimi-input"
+                  value={form.paymentToken}
+                  onChange={(e) => updateForm("paymentToken", e.target.value)}
+                >
+                  {mintPaymentTokens.map((token) => (
+                    <option key={token.address} value={token.address}>
+                      {token.label} · {token.note}
+                    </option>
+                  ))}
+                </select>
+                <em className="mt-1 block text-xs not-italic text-[#6B7280]">
+                  选 BNB 用 BNB 铸造并建 BNB 底池；选 KIMI K3 用 KIMI K3 铸造并建 KIMI K3 底池（需先授权）。
+                </em>
+              </div>
               <div>
-                <label className={labelClass}>单次价格（BNB）</label>
+                <label className={labelClass}>单次价格（{paymentSymbolOf(form.paymentToken)}）</label>
                 <input
                   className="kimi-input"
                   value={form.mintPrice}

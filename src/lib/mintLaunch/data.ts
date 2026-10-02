@@ -20,6 +20,7 @@ export const MINT_BNB_CHAIN = {
 
 export const MINT_ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 export const MINT_USDT_ADDRESS = "0x55d398326f99059fF775485246999027B3197955";
+export const MINT_KIMI_K3_ADDRESS = "0x518afd31a57ffb9b06691d55288395105c3c7777";
 
 export const initialMintForm: MintFormState = {
   tokenName: "",
@@ -134,6 +135,12 @@ export const mintPaymentTokens = [
     label: "BNB",
     symbol: "BNB",
     address: MINT_ZERO_ADDRESS,
-    note: "原生 BNB mint",
+    note: "默认底池",
+  },
+  {
+    label: "KIMI K3",
+    symbol: "KIMI K3",
+    address: MINT_KIMI_K3_ADDRESS,
+    note: "KIMI K3 底池",
   },
 ];
