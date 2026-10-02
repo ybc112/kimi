@@ -18,7 +18,7 @@ const backendUrl = (() => {
   try {
     const parsed = new URL(rawBackendUrl);
     if (LEGACY_NFT_BACKEND_HOSTS.has(parsed.hostname.toLowerCase())) {
-      return globalThis.location?.origin ?? rawBackendUrl;
+      return "https://154.89.195.153.sslip.io";
     }
   } catch {
     /* 相对路径配置，按原值使用 */

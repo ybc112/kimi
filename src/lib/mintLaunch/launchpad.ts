@@ -992,20 +992,20 @@ function getPaymentSymbol(paymentToken: string) {
   return "TOKEN";
 }
 
-// 历史配置写死的后端域名（Cloudflare 侧未指向源站）统一回退到同源，
-// 由 Vercel rewrites 把 /api/* 代理到真实后端。
+// 后端源站地址（浏览器直连，不经 Cloudflare；后端已开启 CORS）。
+export const DEFAULT_MINT_BACKEND_URL = "https://154.89.195.153.sslip.io";
+// 历史配置里写死的后端域名已不可达，统一改写为上面的源站。
 const LEGACY_BACKEND_HOSTS = new Set(["api.kimi-vault.com", "mint.kimi-vault.com"]);
 
 function normalizeBackendBaseUrl(value: string) {
   const nextValue = value.trim();
-  const origin = globalThis.location?.origin ?? "";
   if (!nextValue || nextValue === "same-origin") {
-    return origin;
+    return DEFAULT_MINT_BACKEND_URL;
   }
   try {
     const parsed = new URL(nextValue);
     if (LEGACY_BACKEND_HOSTS.has(parsed.hostname.toLowerCase())) {
-      return origin;
+      return DEFAULT_MINT_BACKEND_URL;
     }
   } catch {
     return nextValue.replace(/\/+$/, "");
